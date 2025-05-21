@@ -7,13 +7,19 @@ namespace Project.Web.Controllers
 {
     public class DetailController : Controller
     {
-        private readonly DetailService _service;
-        public DetailController(DetailService service) => _service = service;
+        private readonly DetailService _detailService;
+        private readonly RouteService _routeService;
+
+        public DetailController(DetailService detailService, RouteService routeService)
+        {
+            _detailService = detailService;
+            _routeService = routeService;
+        }
 
         // Отображение списка (ViewModel)
         public async Task<IActionResult> Index()
         {
-            var dtos = await _service.GetAllAsync();
+            var dtos = await _detailService.GetAllAsync();
             var list = dtos.Select(d => new DetailViewModel
             {
                 Id = d.Id,
@@ -23,12 +29,33 @@ namespace Project.Web.Controllers
             return View(list);
         }
 
+        // GET: Детальная информация о детали
+        public async Task<IActionResult> Details(int id)
+        {
+            var detail = await _detailService.GetByIdAsync(id);
+            if (detail == null)
+                return NotFound();
+
+            var viewModel = new DetailViewModel
+            {
+                Id = detail.Id,
+                Number = detail.Number,
+                Name = detail.Name
+            };
+
+            // Получаем маршрут, если есть
+            var route = await _routeService.GetByDetailIdAsync(id);
+            ViewBag.Route = route;
+
+            return View(viewModel);
+        }
+
         // POST: Добавление детали (через DTO)
         [HttpPost]
         public async Task<IActionResult> Create(DetailCreateDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            await _service.AddAsync(dto);
+            await _detailService.AddAsync(dto);
             return RedirectToAction(nameof(Index));
         }
 
@@ -37,7 +64,7 @@ namespace Project.Web.Controllers
         public async Task<IActionResult> Edit(DetailEditDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            await _service.UpdateAsync(dto);
+            await _detailService.UpdateAsync(dto);
             return RedirectToAction(nameof(Index));
         }
 
@@ -45,8 +72,16 @@ namespace Project.Web.Controllers
         [HttpPost]
         public async Task<IActionResult> Delete(int id)
         {
-            await _service.DeleteAsync(id);
+            await _detailService.DeleteAsync(id);
             return RedirectToAction(nameof(Index));
+        }
+
+        // GET: API метод для получения списка деталей (для AJAX)
+        [HttpGet]
+        public async Task<IActionResult> GetDetails()
+        {
+            var details = await _detailService.GetAllAsync();
+            return Json(details);
         }
     }
 }

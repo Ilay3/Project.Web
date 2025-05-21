@@ -20,5 +20,13 @@ namespace Project.Contracts.ModelDTO
         public string Status { get; set; }
         public bool IsSetup { get; set; }
         public TimeSpan PlannedDuration { get; set; }
+
+        // Дополнительные поля для планирования
+        public DateTime? ScheduledStartTime { get; set; }
+        public DateTime? ScheduledEndTime { get; set; }
+        public int? QueuePosition { get; set; }
+        public int Priority { get; set; }
+        public string OperatorId { get; set; }
+        public string ReasonNote { get; set; }
     }
 }

@@ -5,7 +5,7 @@
 
 <div class="container-fluid">
     <h2>История и отчеты</h2>
-    
+
     <!-- Фильтры -->
     <div class="card mb-4">
         <div class="card-header">
@@ -16,13 +16,13 @@
                 <div class="row">
                     <div class="col-md-3 mb-3">
                         <label for="startDate" class="form-label">Дата начала</label>
-                        <input type="date" class="form-control" id="startDate" name="startDate" 
-                            value="@(Model.Filter.StartDate?.ToString("yyyy-MM-dd"))">
+                        <input type="date" class="form-control" id="startDate" name="startDate"
+                               value="@(Model.Filter.StartDate?.ToString("yyyy-MM-dd"))">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label for="endDate" class="form-label">Дата окончания</label>
-                        <input type="date" class="form-control" id="endDate" name="endDate" 
-                            value="@(Model.Filter.EndDate?.ToString("yyyy-MM-dd"))">
+                        <input type="date" class="form-control" id="endDate" name="endDate"
+                               value="@(Model.Filter.EndDate?.ToString("yyyy-MM-dd"))">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label for="machineId" class="form-label">Станок</label>
@@ -30,9 +30,18 @@
                             <option value="">Все станки</option>
                             @foreach (var machine in Model.Filter.AvailableMachines)
                             {
-                                <option value="@machine.Id" @(Model.Filter.MachineId == machine.Id ? "selected" : "")>
-                                    @machine.Name (@machine.InventoryNumber)
-                                </option>
+                                if (Model.Filter.MachineId == machine.Id)
+                                {
+                                    <option value="@machine.Id" selected="selected">
+                                        @machine.Name (@machine.InventoryNumber)
+                                    </option>
+                                }
+                                else
+                                {
+                                    <option value="@machine.Id">
+                                        @machine.Name (@machine.InventoryNumber)
+                                    </option>
+                                }
                             }
                         </select>
                     </div>
@@ -42,9 +51,18 @@
                             <option value="">Все детали</option>
                             @foreach (var detail in Model.Filter.AvailableDetails)
                             {
-                                <option value="@detail.Id" @(Model.Filter.DetailId == detail.Id ? "selected" : "")>
-                                    @detail.Name (@detail.Number)
-                                </option>
+                                if (Model.Filter.DetailId == detail.Id)
+                                {
+                                    <option value="@detail.Id" selected="selected">
+                                        @detail.Name (@detail.Number)
+                                    </option>
+                                }
+                                else
+                                {
+                                    <option value="@detail.Id">
+                                        @detail.Name (@detail.Number)
+                                    </option>
+                                }
                             }
                         </select>
                     </div>
@@ -53,18 +71,18 @@
                     <div class="col-md-3">
                         <label for="statusFilter" class="form-label">Статус</label>
                         <select class="form-select" id="statusFilter" name="statusFilter">
-                            <option value="All" @(Model.Filter.StatusFilter == "All" ? "selected" : "")>Все статусы</option>
-                            <option value="Completed" @(Model.Filter.StatusFilter == "Completed" ? "selected" : "")>Завершено</option>
-                            <option value="InProgress" @(Model.Filter.StatusFilter == "InProgress" ? "selected" : "")>В работе</option>
-                            <option value="Paused" @(Model.Filter.StatusFilter == "Paused" ? "selected" : "")>На паузе</option>
-                            <option value="Waiting" @(Model.Filter.StatusFilter == "Waiting" ? "selected" : "")>В очереди</option>
-                            <option value="Pending" @(Model.Filter.StatusFilter == "Pending" ? "selected" : "")>Ожидание</option>
+                            <option value="All" selected="@(Model.Filter.StatusFilter == "All")">Все статусы</option>
+                            <option value="Completed" selected="@(Model.Filter.StatusFilter == "Completed")">Завершено</option>
+                            <option value="InProgress" selected="@(Model.Filter.StatusFilter == "InProgress")">В работе</option>
+                            <option value="Paused" selected="@(Model.Filter.StatusFilter == "Paused")">На паузе</option>
+                            <option value="Waiting" selected="@(Model.Filter.StatusFilter == "Waiting")">В очереди</option>
+                            <option value="Pending" selected="@(Model.Filter.StatusFilter == "Pending")">Ожидание</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <div class="form-check mt-4">
-                            <input class="form-check-input" type="checkbox" id="includeSetups" name="includeSetups" 
-                                @(Model.Filter.IncludeSetups ? "checked" : "")>
+                            <input class="form-check-input" type="checkbox" id="includeSetups" name="includeSetups"
+                            @(Model.Filter.IncludeSetups ? "checked" : "")>
                             <label class="form-check-label" for="includeSetups">
                                 Включать этапы переналадки
                             </label>
@@ -78,7 +96,7 @@
             </form>
         </div>
     </div>
-    
+
     <!-- Статистика -->
     <div class="row mb-4">
         <div class="col-md-3">
@@ -119,7 +137,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- График -->
     <div class="card mb-4">
         <div class="card-header">
@@ -129,7 +147,7 @@
             <canvas id="chart-utilization" height="100"></canvas>
         </div>
     </div>
-    
+
     <!-- Таблица истории -->
     <div class="card">
         <div class="card-header">
@@ -163,7 +181,7 @@
                                 "Pending" => "bg-light",
                                 _ => ""
                             };
-                            
+
                             <tr>
                                 <td>@stage.DetailName</td>
                                 <td>@stage.StageName</td>
@@ -189,20 +207,20 @@
         $(document).ready(function() {
             // Инициализация графика использования станков
             initUtilizationChart();
-            
+
             // Экспорт в CSV
             $('#export-csv').on('click', exportToCsv);
-            
+
             // Автоматическое обновление при изменении фильтров
             $('#filter-form select, #filter-form input[type="checkbox"]').on('change', function() {
                 $('#filter-form').submit();
             });
         });
-        
+
         // Инициализация графика
         function initUtilizationChart() {
             const ctx = document.getElementById('chart-utilization').getContext('2d');
-            
+
             // Данные для графика
             const data = {
                 labels: ['Время работы'],
@@ -224,7 +242,7 @@
                     }
                 ]
             };
-            
+
             // Настройки графика
             const options = {
                 responsive: true,
@@ -241,7 +259,7 @@
                     }
                 }
             };
-            
+
             // Создание графика
             const myChart = new Chart(ctx, {
                 type: 'bar',
@@ -249,12 +267,12 @@
                 options: options
             });
         }
-        
+
         // Экспорт данных в CSV
         function exportToCsv() {
             const table = document.getElementById('history-table');
             let csv = [];
-            
+
             // Заголовки
             const headers = [];
             const headerCells = table.querySelectorAll('thead th');
@@ -262,7 +280,7 @@
                 headers.push(cell.textContent.trim());
             });
             csv.push(headers.join(','));
-            
+
             // Данные
             const rows = table.querySelectorAll('tbody tr');
             rows.forEach(row => {
@@ -278,12 +296,12 @@
                 });
                 csv.push(rowData.join(','));
             });
-            
+
             // Формируем CSV-файл
             const csvContent = csv.join('\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            
+
             // Создаем ссылку для скачивания
             const link = document.createElement('a');
             const startDate = document.getElementById('startDate').value;

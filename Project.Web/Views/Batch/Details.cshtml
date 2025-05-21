@@ -1,0 +1,484 @@
+﻿@model BatchDetailsViewModel
+@{
+    ViewData["Title"] = "Детали партии №" + Model.Id;
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Партия №@Model.Id</h2>
+            <p class="lead">Деталь: @Model.DetailName</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Index", "Batch")" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> К списку партий
+                </a>
+                <a href="@Url.Action("Index", "Gantt")" class="btn btn-outline-primary">
+                    <i class="bi bi-calendar3"></i> Диаграмма Ганта
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success mb-3">
+            @TempData["SuccessMessage"]
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger mb-3">
+            @TempData["ErrorMessage"]
+        </div>
+    }
+
+    <div class="row">
+        <!-- Основная информация о партии -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Информация о партии</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Номер партии:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.Id
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Деталь:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            <a href="@Url.Action("Details", "Detail", new { id = Model.DetailId })">
+                                @Model.DetailName
+                            </a>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Количество:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.Quantity шт.
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Создана:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.Created.ToString("dd.MM.yyyy HH:mm")
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Подпартии:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.SubBatches.Count подпартий
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Статус:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @if (Model.IsCompleted)
+                            {
+                                <span class="badge bg-success">Завершено</span>
+                            }
+                            else if (Model.IsInProgress)
+                            {
+                                <span class="badge bg-primary">В производстве</span>
+                            }
+                            else if (Model.IsNotStarted)
+                            {
+                                <span class="badge bg-secondary">Не начато</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Частично выполнено</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Выполнение:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="progress" style="height: 10px;">
+                                <div class="progress-bar @(Model.CompletionPercent >= 100 ? "bg-success" : Model.CompletionPercent >= 50 ? "bg-primary" : "bg-warning")"
+                                     role="progressbar" style="width: @Model.CompletionPercent%;"
+                                     aria-valuenow="@Model.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                                </div>
+                            </div>
+                            <small class="text-muted">@Model.CompletionPercent% (@Model.CompletedStages из @Model.TotalStages этапов)</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editBatchModal">
+                        <i class="bi bi-pencil"></i> Редактировать
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика выполнения -->
+        <div class="col-md-8 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Ход выполнения</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h2 class="text-primary">@Model.TotalStages</h2>
+                                <p class="text-muted mb-0">Всего этапов</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h2 class="text-success">@Model.CompletedStages</h2>
+                                <p class="text-muted mb-0">Завершено</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h2 class="text-info">@Model.InProgressStages</h2>
+                                <p class="text-muted mb-0">В работе</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h2 class="text-secondary">@Model.PendingStages</h2>
+                                <p class="text-muted mb-0">Ожидает</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress mb-4" style="height: 25px;">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: @(Model.CompletedStages * 100.0 / Math.Max(1, Model.TotalStages))%;"
+                             aria-valuenow="@Model.CompletedStages" aria-valuemin="0" aria-valuemax="@Model.TotalStages">
+                            @Model.CompletedStages
+                        </div>
+                        <div class="progress-bar bg-primary" role="progressbar"
+                             style="width: @(Model.InProgressStages * 100.0 / Math.Max(1, Model.TotalStages))%;"
+                             aria-valuenow="@Model.InProgressStages" aria-valuemin="0" aria-valuemax="@Model.TotalStages">
+                            @Model.InProgressStages
+                        </div>
+                        <div class="progress-bar bg-secondary" role="progressbar"
+                             style="width: @(Model.PendingStages * 100.0 / Math.Max(1, Model.TotalStages))%;"
+                             aria-valuenow="@Model.PendingStages" aria-valuemin="0" aria-valuemax="@Model.TotalStages">
+                            @Model.PendingStages
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-3">
+                        <a href="@Url.Action("Index", "Gantt")" class="btn btn-primary">
+                            <i class="bi bi-calendar3"></i> Перейти к диаграмме Ганта
+                        </a>
+                    </div>
+
+                    <!-- Графическое представление подпартий и их прогресса -->
+                    <div id="batch-progress-chart">
+                        <h6 class="mb-3">Выполнение подпартий:</h6>
+
+                        @foreach (var subBatch in Model.SubBatches)
+                        {
+                            var totalStages = subBatch.StageExecutions?.Count ?? 0;
+                            var completedStages = subBatch.StageExecutions?.Count(se => se.Status == "Completed") ?? 0;
+                            var inProgressStages = subBatch.StageExecutions?.Count(se => se.Status == "InProgress") ?? 0;
+                            var pendingStages = totalStages - completedStages - inProgressStages;
+
+                            var completionPercent = totalStages > 0 ? (completedStages * 100.0 / totalStages) : 0;
+
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <div>
+                                        <strong>Подпартия #@subBatch.Id</strong> (@subBatch.Quantity шт.)
+                                    </div>
+                                    <div>
+                                        @if (completedStages == totalStages && totalStages > 0)
+                                        {
+                                            <span class="badge bg-success">Завершено</span>
+                                        }
+                                        else if (inProgressStages > 0)
+                                        {
+                                            <span class="badge bg-primary">В работе</span>
+                                        }
+                                        else if (completedStages > 0)
+                                        {
+                                            <span class="badge bg-warning text-dark">Частично</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Не начато</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="progress" style="height: 15px;">
+                                    <div class="progress-bar bg-success" role="progressbar"
+                                         style="width: @(completedStages * 100.0 / Math.Max(1, totalStages))%;"
+                                         aria-valuenow="@completedStages" aria-valuemin="0" aria-valuemax="@totalStages">
+                                    </div>
+                                    <div class="progress-bar bg-primary" role="progressbar"
+                                         style="width: @(inProgressStages * 100.0 / Math.Max(1, totalStages))%;"
+                                         aria-valuenow="@inProgressStages" aria-valuemin="0" aria-valuemax="@totalStages">
+                                    </div>
+                                    <div class="progress-bar bg-secondary" role="progressbar"
+                                         style="width: @(pendingStages * 100.0 / Math.Max(1, totalStages))%;"
+                                         aria-valuenow="@pendingStages" aria-valuemin="0" aria-valuemax="@totalStages">
+                                    </div>
+                                </div>
+                                <small class="text-muted">@completedStages из @totalStages этапов (@Math.Round(completionPercent, 1)%)</small>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица этапов выполнения -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Этапы выполнения</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="stages-table">
+                            <thead>
+                                <tr>
+                                    <th>Подпартия</th>
+                                    <th>Этап</th>
+                                    <th>Станок</th>
+                                    <th>Статус</th>
+                                    <th>Начало</th>
+                                    <th>Завершение</th>
+                                    <th>Длительность</th>
+                                    <th>Тип</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var subBatch in Model.SubBatches)
+                                {
+                                    if (subBatch.StageExecutions != null)
+                                    {
+                                        foreach (var stage in subBatch.StageExecutions.OrderBy(se => se.IsSetup ? 0 : 1))
+                                        {
+                                            string statusClass = stage.Status switch
+                                            {
+                                                "Completed" => "bg-success text-white",
+                                                "InProgress" => "bg-primary text-white",
+                                                "Paused" => "bg-secondary text-white",
+                                                "Waiting" => "bg-warning",
+                                                "Pending" => "bg-light",
+                                                _ => ""
+                                            };
+
+                                            var duration = stage.StartTime.HasValue && stage.EndTime.HasValue
+                                            ? (stage.EndTime.Value - stage.StartTime.Value).TotalHours
+                                            : (double?)null;
+
+                                            <tr>
+                                                <td>Подпартия #@subBatch.Id (@subBatch.Quantity шт.)</td>
+                                                <td>@stage.StageName</td>
+                                                <td>@(string.IsNullOrEmpty(stage.MachineName) ? "Не назначен" : stage.MachineName)</td>
+                                                <td><span class="badge @statusClass">@GetStatusName(stage.Status)</span></td>
+                                                <td>@(stage.StartTime?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+                                                <td>@(stage.EndTime?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+                                                <td>@(duration.HasValue ? Math.Round(duration.Value, 2) + " ч" : "-")</td>
+                                                <td>@(stage.IsSetup ? "Переналадка" : "Операция")</td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования партии -->
+<div class="modal fade" id="editBatchModal" tabindex="-1" aria-labelledby="editBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editBatchModalLabel">Редактирование партии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Edit", "Batch")">
+                <div class="modal-body">
+                    <input type="hidden" name="Id" value="@Model.Id" />
+                    <div class="mb-3">
+                        <label for="Quantity" class="form-label">Общее количество</label>
+                        <input type="number" class="form-control" id="Quantity" name="Quantity" value="@Model.Quantity" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Подпартии</label>
+                        @for (int i = 0; i < Model.SubBatches.Count; i++)
+                        {
+                            var subBatch = Model.SubBatches[i];
+                            var isActive = subBatch.StageExecutions?.Any(se => se.Status == "InProgress" || se.Status == "Completed") ?? false;
+
+                            <div class="mb-2">
+                                <div class="input-group">
+                                    <span class="input-group-text">Подпартия #@subBatch.Id</span>
+                                    <input type="hidden" name="SubBatches[@i].Id" value="@subBatch.Id" />
+                                    <input type="number" class="form-control sub-batch-quantity"
+                                           name="SubBatches[@i].Quantity"
+                                           value="@subBatch.Quantity"
+                                           min="1"
+                                    @(isActive ? "readonly" : "")
+                                           required>
+                                    @if (isActive)
+                                    {
+                                        <span class="input-group-text bg-warning text-dark">
+                                            <i class="bi bi-lock"></i>
+                                        </span>
+                                    }
+                                </div>
+                                @if (isActive)
+                                {
+                                    <small class="text-muted">Нельзя изменить количество для активной подпартии</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <span>Всего: </span>
+                            <span id="total-quantity">@Model.SubBatches.Sum(sb => sb.Quantity)</span> / <span id="target-quantity">@Model.Quantity</span>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="balance-quantities-btn">
+                            Выровнять
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Инициализация таблицы
+            $('#stages-table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                },
+                "pageLength": 25,
+                "order": [[ 0, "asc" ], [ 1, "asc" ]] // Сортировка по подпартии и этапу
+            });
+
+            // Изменение количества в подпартиях
+            $('.sub-batch-quantity').on('change', function() {
+                updateTotalQuantity();
+            });
+
+            // Выравнивание количеств подпартий
+            $('#balance-quantities-btn').on('click', function() {
+                const targetQuantity = parseInt($('#target-quantity').text());
+                const inputs = $('.sub-batch-quantity').not('[readonly]');
+                const count = inputs.length;
+
+                if (count === 0) {
+                    alert('Нет доступных для изменения подпартий');
+                    return;
+                }
+
+                // Сначала считаем общее количество в заблокированных полях
+                let lockedTotal = 0;
+                $('.sub-batch-quantity[readonly]').each(function() {
+                    lockedTotal += parseInt($(this).val()) || 0;
+                });
+
+                // Затем распределяем оставшееся количество по незаблокированным полям
+                const remainingQuantity = targetQuantity - lockedTotal;
+
+                if (remainingQuantity <= 0) {
+                    alert('Невозможно выровнять количества: в заблокированных подпартиях уже находится всё количество');
+                    return;
+                }
+
+                const baseQuantity = Math.floor(remainingQuantity / count);
+                const remainder = remainingQuantity % count;
+
+                let i = 0;
+                inputs.each(function() {
+                    $(this).val(i < remainder ? baseQuantity + 1 : baseQuantity);
+                    i++;
+                });
+
+                updateTotalQuantity();
+            });
+
+            // Обновление общего количества
+            function updateTotalQuantity() {
+                let total = 0;
+                $('.sub-batch-quantity').each(function() {
+                    total += parseInt($(this).val()) || 0;
+                });
+
+                $('#total-quantity').text(total);
+
+                // Выделение красным, если не совпадает с целевым
+                const target = parseInt($('#target-quantity').text());
+                if (total !== target) {
+                    $('#total-quantity').addClass('text-danger').removeClass('text-success');
+                } else {
+                    $('#total-quantity').addClass('text-success').removeClass('text-danger');
+                }
+            }
+
+            // Валидация формы перед отправкой
+            $('form').on('submit', function(e) {
+                const total = parseInt($('#total-quantity').text());
+                const target = parseInt($('#target-quantity').text());
+
+                if (total !== target) {
+                    alert(`Общее количество в подпартиях (${total}) не совпадает с требуемым (${target})`);
+                    e.preventDefault();
+                    return false;
+                }
+
+                return true;
+            });
+        });
+    </script>
+}
+
+@functions {
+    string GetStatusName(string status)
+    {
+        return status switch
+        {
+            "Completed" => "Завершено",
+            "InProgress" => "В работе",
+            "Paused" => "На паузе",
+            "Waiting" => "В очереди",
+            "Pending" => "Ожидание",
+            _ => status
+        };
+    }
+}

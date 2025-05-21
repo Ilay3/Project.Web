@@ -1,0 +1,108 @@
+﻿@using Project.Web.ViewModels
+@model List<MachineViewModel>
+@{
+    ViewData["Title"] = "Рабочие станции";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Рабочие станции</h2>
+            <p class="lead">Выберите станцию для начала работы или просмотра информации</p>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger mb-3">
+            @TempData["ErrorMessage"]
+        </div>
+    }
+
+    <div class="row">
+        @foreach (var machine in Model)
+        {
+            <div class="col-md-4 col-lg-3 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">@machine.Name</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Инв. номер:</strong> @machine.InventoryNumber</p>
+                        <p><strong>Тип:</strong> @machine.MachineTypeName</p>
+                        <p><strong>Приоритет:</strong> @machine.Priority</p>
+
+                        <div class="d-flex" id="status-container-@machine.Id">
+                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                            <span>Загрузка статуса...</span>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between">
+                            <a href="@Url.Action("Details", "Workstation", new { id = machine.Id })" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-info-circle"></i> Подробнее
+                            </a>
+                            <a href="@Url.Action("Operator", "Workstation", new { id = machine.Id })" class="btn btn-primary btn-sm">
+                                <i class="bi bi-tools"></i> Рабочее место
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Загрузка статусов всех станков
+            loadMachineStatuses();
+
+            // Обновление статусов каждые 30 секунд
+            setInterval(loadMachineStatuses, 30000);
+        });
+
+        // Загрузка статусов станков
+        function loadMachineStatuses() {
+            $.getJSON("/api/gantt/stages", function(data) {
+                // Сначала устанавливаем все статусы как свободные
+        @foreach (var machine in Model)
+        {
+            <text>
+                        updateMachineStatus(@machine.Id, "Свободен", "success");
+            </text>
+        }
+
+                // Затем обновляем статусы занятых станков
+                data.forEach(function(stage) {
+                    if (stage.machineId && stage.status === "InProgress") {
+                        updateMachineStatus(
+                            stage.machineId,
+                            (stage.isSetup ? "Переналадка" : "В работе"),
+                            (stage.isSetup ? "info" : "primary")
+                        );
+                    }
+                    else if (stage.machineId && stage.status === "Paused") {
+                        updateMachineStatus(stage.machineId, "На паузе", "warning");
+                    }
+                });
+            });
+        }
+
+        // Обновление статуса конкретного станка
+        function updateMachineStatus(machineId, statusText, statusClass) {
+            const statusContainer = $("#status-container-" + machineId);
+            if (statusContainer.length) {
+                statusContainer.html(`
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-${statusClass} me-2">&nbsp;</span>
+                        <span>${statusText}</span>
+                    </div>
+                `);
+            }
+        }
+    </script>
+}

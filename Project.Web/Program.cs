@@ -30,6 +30,7 @@ builder.Services.AddScoped<StageExecutionService>();
 builder.Services.AddScoped<SetupTimeService>();
 builder.Services.AddScoped<ProductionSchedulerService>();
 builder.Services.AddScoped<HistoryService>();
+builder.Services.AddScoped<PlanningService>();
 
 var app = builder.Build();
 

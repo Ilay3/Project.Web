@@ -172,7 +172,7 @@ namespace Project.Application.Services
         }
 
         // Приостановка этапа
-        public async Task PauseStageExecution(int stageExecutionId)
+        public async Task PauseStageExecution(int stageExecutionId, string operatorId = null, string reasonNote = null)
         {
             var stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
             if (stageExecution == null) throw new Exception("Stage execution not found");
@@ -183,11 +183,18 @@ namespace Project.Application.Services
             stageExecution.Status = StageExecutionStatus.Paused;
             stageExecution.PauseTimeUtc = DateTime.UtcNow;
 
+            // Сохраняем идентификатор оператора и примечание, если предоставлены
+            if (!string.IsNullOrEmpty(operatorId))
+                stageExecution.OperatorId = operatorId;
+
+            if (!string.IsNullOrEmpty(reasonNote))
+                stageExecution.ReasonNote = reasonNote;
+
             await _batchRepo.UpdateStageExecutionAsync(stageExecution);
         }
 
         // Возобновление приостановленного этапа
-        public async Task ResumeStageExecution(int stageExecutionId)
+        public async Task ResumeStageExecution(int stageExecutionId, string operatorId = null, string reasonNote = null)
         {
             var stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
             if (stageExecution == null) throw new Exception("Stage execution not found");
@@ -198,11 +205,18 @@ namespace Project.Application.Services
             stageExecution.Status = StageExecutionStatus.InProgress;
             stageExecution.ResumeTimeUtc = DateTime.UtcNow;
 
+            // Сохраняем идентификатор оператора и примечание, если предоставлены
+            if (!string.IsNullOrEmpty(operatorId))
+                stageExecution.OperatorId = operatorId;
+
+            if (!string.IsNullOrEmpty(reasonNote))
+                stageExecution.ReasonNote = reasonNote;
+
             await _batchRepo.UpdateStageExecutionAsync(stageExecution);
         }
 
         // Завершение этапа
-        public async Task CompleteStageExecution(int stageExecutionId)
+        public async Task CompleteStageExecution(int stageExecutionId, string operatorId = null, string reasonNote = null)
         {
             var stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
             if (stageExecution == null) throw new Exception("Stage execution not found");
@@ -212,6 +226,13 @@ namespace Project.Application.Services
 
             stageExecution.Status = StageExecutionStatus.Completed;
             stageExecution.EndTimeUtc = DateTime.UtcNow;
+
+            // Сохраняем идентификатор оператора и примечание, если предоставлены
+            if (!string.IsNullOrEmpty(operatorId))
+                stageExecution.OperatorId = operatorId;
+
+            if (!string.IsNullOrEmpty(reasonNote))
+                stageExecution.ReasonNote = reasonNote;
 
             await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
@@ -311,7 +332,16 @@ namespace Project.Application.Services
                     Status = stage.Status.ToString(),
                     IsSetup = stage.IsSetup,
                     // Расчет плановой длительности
-                    PlannedDuration = CalculatePlannedDuration(stage, subBatch.Quantity)
+                    PlannedDuration = CalculatePlannedDuration(stage, subBatch.Quantity),
+                    // Дополнительные поля
+                    ScheduledStartTime = stage.ScheduledStartTimeUtc,
+                    ScheduledEndTime = stage.ScheduledStartTimeUtc.HasValue
+                        ? stage.ScheduledStartTimeUtc.Value.Add(CalculatePlannedDuration(stage, subBatch.Quantity))
+                        : null,
+                    QueuePosition = stage.QueuePosition,
+                    Priority = stage.Priority,
+                    OperatorId = stage.OperatorId,
+                    ReasonNote = stage.ReasonNote
                 });
             }
 
@@ -335,4 +365,5 @@ namespace Project.Application.Services
             }
         }
     }
+
 }

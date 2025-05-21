@@ -1,0 +1,411 @@
+﻿@model PlanSummaryViewModel
+@{
+    ViewData["Title"] = "Сводка по производственному плану";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Сводка по производству</h2>
+            <p class="lead">Период: @Model.StartDate.ToString("dd.MM.yyyy") - @Model.EndDate.ToString("dd.MM.yyyy")</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <a href="@Url.Action("Create", "Planning")" class="btn btn-primary">
+                    <i class="bi bi-plus"></i> Создать план
+                </a>
+                <a href="@Url.Action("Index", "Gantt")" class="btn btn-outline-primary">
+                    <i class="bi bi-calendar3"></i> Диаграмма Ганта
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Фильтр по дате -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" id="date-filter-form" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="startDate" class="form-label">Дата начала</label>
+                    <input type="date" class="form-control" id="startDate" name="startDate"
+                           value="@Model.StartDate.ToString("yyyy-MM-dd")">
+                </div>
+                <div class="col-md-4">
+                    <label for="endDate" class="form-label">Дата окончания</label>
+                    <input type="date" class="form-control" id="endDate" name="endDate"
+                           value="@Model.EndDate.ToString("yyyy-MM-dd")">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary">Применить</button>
+                    <button type="button" class="btn btn-outline-secondary ms-2" id="current-month-btn">Текущий месяц</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Общая статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Всего партий</h5>
+                    <h2 class="display-4 mb-0">@Model.TotalBatches</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Изготовлено деталей</h5>
+                    <h2 class="display-4 mb-0">@Model.CompletedQuantity</h2>
+                    <p class="mb-0">из @Model.TotalQuantity (@Model.CompletionPercent%)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Выполнение этапов</h5>
+                    <div class="progress mt-3 mb-2 bg-light" style="height: 20px;">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: @($"{(Model.MachineStats.Sum(m => m.CompletedStageCount) * 100.0 / Math.Max(1, Model.MachineStats.Sum(m => m.StageCount)))}%")"
+                             aria-valuenow="@(Model.MachineStats.Sum(m => m.CompletedStageCount))"
+                             aria-valuemin="0"
+                             aria-valuemax="@(Model.MachineStats.Sum(m => m.StageCount))">
+                            @($"{Math.Round(Model.MachineStats.Sum(m => m.CompletedStageCount) * 100.0 / Math.Max(1, Model.MachineStats.Sum(m => m.StageCount)), 1)}%")
+                        </div>
+                    </div>
+                    <p class="mb-0">@(Model.MachineStats.Sum(m => m.CompletedStageCount)) из @(Model.MachineStats.Sum(m => m.StageCount)) этапов</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-secondary text-white h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Эффективность</h5>
+                    <h2 class="display-4 mb-0">@(Math.Round(Model.MachineStats.Any() ? Model.MachineStats.Average(m => m.EfficiencyPercent) : 0, 1))%</h2>
+                    <p class="mb-0">Средняя по всем станкам</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Статистика по деталям -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Статистика по деталям</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.DetailStats.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="details-table">
+                                <thead>
+                                    <tr>
+                                        <th>Деталь</th>
+                                        <th>Запланировано</th>
+                                        <th>Изготовлено</th>
+                                        <th>Выполнение</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var detail in Model.DetailStats.OrderByDescending(d => d.PlannedQuantity))
+                                    {
+                                        <tr>
+                                            <td>@detail.DetailName</td>
+                                            <td>@detail.PlannedQuantity</td>
+                                            <td>@detail.CompletedQuantity</td>
+                                            <td>
+                                                <div class="progress" style="height: 10px;">
+                                                    <div class="progress-bar @(detail.CompletionPercent >= 100 ? "bg-success" : detail.CompletionPercent >= 70 ? "bg-info" : detail.CompletionPercent >= 40 ? "bg-warning" : "bg-danger")"
+                                                         role="progressbar" style="width: @detail.CompletionPercent%;"
+                                                         aria-valuenow="@detail.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                                                    </div>
+                                                </div>
+                                                <small class="text-muted">@detail.CompletionPercent%</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center p-4 text-muted">
+                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                            <p class="mt-3">Нет данных о производстве деталей за выбранный период</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика по станкам -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0">Статистика по станкам</h5>
+                </div>
+                <div class="card-body">
+                    @if (Model.MachineStats.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="machines-table">
+                                <thead>
+                                    <tr>
+                                        <th>Станок</th>
+                                        <th>Время работы</th>
+                                        <th>Время переналадки</th>
+                                        <th>Эффективность</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var machine in Model.MachineStats.OrderByDescending(m => m.TotalHours))
+                                    {
+                                        <tr>
+                                            <td>@machine.MachineName</td>
+                                            <td>@machine.TotalHours ч</td>
+                                            <td>
+                                                @machine.SetupHours ч<br>
+                                                <small class="text-muted">(@Math.Round(machine.TotalHours > 0 ? (machine.SetupHours / machine.TotalHours) * 100 : 0, 1)%)</small>
+                                            </td>
+                                            <td>
+                                                <div class="progress" style="height: 10px;">
+                                                    <div class="progress-bar @(machine.EfficiencyPercent >= 90 ? "bg-success" : machine.EfficiencyPercent >= 75 ? "bg-info" : machine.EfficiencyPercent >= 50 ? "bg-warning" : "bg-danger")"
+                                                         role="progressbar" style="width: @machine.EfficiencyPercent%;"
+                                                         aria-valuenow="@machine.EfficiencyPercent" aria-valuemin="0" aria-valuemax="100">
+                                                    </div>
+                                                </div>
+                                                <small class="text-muted">@machine.EfficiencyPercent%</small>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center p-4 text-muted">
+                            <i class="bi bi-tools" style="font-size: 3rem;"></i>
+                            <p class="mt-3">Нет данных о работе станков за выбранный период</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Графики и диаграммы -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Распределение производства по деталям</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="details-chart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Загрузка станков</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="machines-chart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            // Инициализация таблиц
+            $('#details-table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                },
+                "pageLength": 10,
+                "order": [[ 1, "desc" ]] // Сортировка по запланированному количеству
+            });
+
+            $('#machines-table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                },
+                "pageLength": 10,
+                "order": [[ 1, "desc" ]] // Сортировка по времени работы
+            });
+
+            // Кнопка "Текущий месяц"
+            $('#current-month-btn').click(function() {
+                var today = new Date();
+                var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                var lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+                $('#startDate').val(formatDate(firstDay));
+                $('#endDate').val(formatDate(lastDay));
+
+                $('#date-filter-form').submit();
+            });
+
+            // Форматирование даты для input[type="date"]
+            function formatDate(date) {
+                var d = new Date(date),
+                    month = '' + (d.getMonth() + 1),
+                    day = '' + d.getDate(),
+                    year = d.getFullYear();
+
+                if (month.length < 2)
+                    month = '0' + month;
+                if (day.length < 2)
+                    day = '0' + day;
+
+                return [year, month, day].join('-');
+            }
+
+            // Инициализация графиков
+            initDetailsChart();
+            initMachinesChart();
+        });
+
+        // График распределения производства по деталям
+        function initDetailsChart() {
+            var ctx = document.getElementById('details-chart').getContext('2d');
+
+            var data = {
+                labels: [
+        @foreach (var detail in Model.DetailStats.OrderByDescending(d => d.PlannedQuantity).Take(10))
+        {
+            <text>'@detail.DetailName',</text>
+        }
+                ],
+                datasets: [
+                    {
+                        label: 'Запланировано',
+                        data: [
+        @foreach (var detail in Model.DetailStats.OrderByDescending(d => d.PlannedQuantity).Take(10))
+        {
+            <text>@detail.PlannedQuantity,</text>
+        }
+                        ],
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Изготовлено',
+                        data: [
+        @foreach (var detail in Model.DetailStats.OrderByDescending(d => d.PlannedQuantity).Take(10))
+        {
+            <text>@detail.CompletedQuantity,</text>
+        }
+                        ],
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            var options = {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Количество деталей'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Детали'
+                        }
+                    }
+                }
+            };
+
+            var myChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: options
+            });
+        }
+
+        // График загрузки станков
+        function initMachinesChart() {
+            var ctx = document.getElementById('machines-chart').getContext('2d');
+
+            var data = {
+                labels: [
+        @foreach (var machine in Model.MachineStats.OrderByDescending(m => m.TotalHours).Take(10))
+        {
+            <text>'@machine.MachineName',</text>
+        }
+                ],
+                datasets: [
+                    {
+                        label: 'Рабочее время',
+                        data: [
+        @foreach (var machine in Model.MachineStats.OrderByDescending(m => m.TotalHours).Take(10))
+        {
+            <text>@Math.Round(machine.TotalHours - machine.SetupHours, 2),</text>
+        }
+                        ],
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Время переналадки',
+                        data: [
+        @foreach (var machine in Model.MachineStats.OrderByDescending(m => m.TotalHours).Take(10))
+        {
+            <text>@machine.SetupHours,</text>
+        }
+                        ],
+                        backgroundColor: 'rgba(255, 159, 64, 0.5)',
+                        borderColor: 'rgba(255, 159, 64, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            var options = {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Время (часы)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Станки'
+                        }
+                    }
+                }
+            };
+
+            var myChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: options
+            });
+        }
+    </script>
+}

@@ -1,0 +1,203 @@
+﻿@model List<DetailViewModel>
+@{
+    ViewData["Title"] = "Справочник деталей";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Справочник деталей</h2>
+            <p class="lead">Управление деталями, производимыми на предприятии</p>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDetailModal">
+                <i class="bi bi-plus"></i> Добавить деталь
+            </button>
+        </div>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success mb-3">
+            @TempData["SuccessMessage"]
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger mb-3">
+            @TempData["ErrorMessage"]
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="details-table">
+                    <thead>
+                        <tr>
+                            <th>Номер</th>
+                            <th>Название</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Any())
+                        {
+                            foreach (var detail in Model)
+                            {
+                                <tr>
+                                    <td>@detail.Number</td>
+                                    <td>@detail.Name</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="@Url.Action("Details", "Detail", new { id = detail.Id })" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-info-circle"></i> Подробнее
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary edit-detail-btn"
+                                                    data-id="@detail.Id"
+                                                    data-number="@detail.Number"
+                                                    data-name="@detail.Name"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editDetailModal">
+                                                <i class="bi bi-pencil"></i> Изменить
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger delete-detail-btn"
+                                                    data-id="@detail.Id"
+                                                    data-name="@detail.Name"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#deleteDetailModal">
+                                                <i class="bi bi-trash"></i> Удалить
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="3" class="text-center">Нет деталей в справочнике</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания детали -->
+<div class="modal fade" id="createDetailModal" tabindex="-1" aria-labelledby="createDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createDetailModalLabel">Добавить деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Create", "Detail")">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="createNumber" class="form-label">Номер детали</label>
+                        <input type="text" class="form-control" id="createNumber" name="Number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="createName" class="form-label">Название детали</label>
+                        <input type="text" class="form-control" id="createName" name="Name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования детали -->
+<div class="modal fade" id="editDetailModal" tabindex="-1" aria-labelledby="editDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDetailModalLabel">Изменить деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Edit", "Detail")">
+                <div class="modal-body">
+                    <input type="hidden" id="editId" name="Id">
+                    <div class="mb-3">
+                        <label for="editNumber" class="form-label">Номер детали</label>
+                        <input type="text" class="form-control" id="editNumber" name="Number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editName" class="form-label">Название детали</label>
+                        <input type="text" class="form-control" id="editName" name="Name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно удаления детали -->
+<div class="modal fade" id="deleteDetailModal" tabindex="-1" aria-labelledby="deleteDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteDetailModalLabel">Удалить деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Delete", "Detail")">
+                <div class="modal-body">
+                    <input type="hidden" id="deleteId" name="id">
+                    <p>Вы уверены, что хотите удалить деталь <strong id="deleteName"></strong>?</p>
+                    <p class="text-danger">Это действие нельзя отменить. Удаление детали приведет к удалению всех связанных маршрутов.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Обработчик кнопки редактирования
+            $('.edit-detail-btn').click(function() {
+                var id = $(this).data('id');
+                var number = $(this).data('number');
+                var name = $(this).data('name');
+
+                $('#editId').val(id);
+                $('#editNumber').val(number);
+                $('#editName').val(name);
+            });
+
+            // Обработчик кнопки удаления
+            $('.delete-detail-btn').click(function() {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                $('#deleteId').val(id);
+                $('#deleteName').text(name);
+            });
+
+            // Инициализация таблицы с сортировкой и поиском
+            $('#details-table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                },
+                "pageLength": 25,
+                "order": [[ 1, "asc" ]] // Сортировка по названию
+            });
+        });
+    </script>
+}

@@ -1,0 +1,408 @@
+﻿@model DetailViewModel
+@using Project.Contracts.ModelDTO;
+@{
+    ViewData["Title"] = "Детали: " + Model.Name;
+    var route = ViewBag.Route as RouteDto;
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>@Model.Name <small class="text-muted">@Model.Number</small></h2>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Index", "Detail")" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> К списку деталей
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Информация о детали</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Номер:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            @Model.Number
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Название:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            @Model.Name
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>ID:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            @Model.Id
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editDetailModal">
+                        <i class="bi bi-pencil"></i> Редактировать
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Статистика производства</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card-text">
+                                <h3 class="text-center mb-1">0</h3>
+                                <p class="text-center text-muted">Выполнено за месяц</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card-text">
+                                <h3 class="text-center mb-1">0</h3>
+                                <p class="text-center text-muted">В производстве</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card-text">
+                                <h3 class="text-center mb-1">0:00</h3>
+                                <p class="text-center text-muted">Среднее время изготовления</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card-text">
+                                <h3 class="text-center mb-1">0:00</h3>
+                                <p class="text-center text-muted">Среднее время переналадки</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="@Url.Action("Index", "History", new { detailId = Model.Id })" class="btn btn-outline-primary">
+                        <i class="bi bi-clock-history"></i> История изготовления
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Маршрут изготовления</h5>
+                    @if (route == null)
+                    {
+                        <a href="@Url.Action("Create", "Route", new { detailId = Model.Id })" class="btn btn-primary btn-sm">
+                            <i class="bi bi-plus"></i> Создать маршрут
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="@Url.Action("Edit", "Route", new { id = route.Id })" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-pencil"></i> Редактировать маршрут
+                        </a>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (route != null && route.Stages.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="10%">№</th>
+                                        <th width="30%">Операция</th>
+                                        <th width="30%">Тип станка</th>
+                                        <th width="15%">Время на деталь (ч)</th>
+                                        <th width="15%">Время переналадки (ч)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var stage in route.Stages.OrderBy(s => s.Order))
+                                    {
+                                        <tr>
+                                            <td>@stage.Order</td>
+                                            <td>@stage.Name</td>
+                                            <td>@stage.MachineTypeName</td>
+                                            <td>@stage.NormTime</td>
+                                            <td>@stage.SetupTime</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center p-4">
+                            <i class="bi bi-diagram-3 mb-3" style="font-size: 3rem;"></i>
+                            <h5>Маршрут не создан</h5>
+                            <p class="text-muted">Для этой детали ещё не создан маршрут изготовления.</p>
+                            <a href="@Url.Action("Create", "Route", new { detailId = Model.Id })" class="btn btn-primary">
+                                <i class="bi bi-plus"></i> Создать маршрут
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Партии в производстве</h5>
+                </div>
+                <div class="card-body">
+                    <div id="active-batches">
+                        <p class="text-center text-muted my-4">Загрузка данных...</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBatchModal">
+                        <i class="bi bi-plus"></i> Создать партию
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования детали -->
+<div class="modal fade" id="editDetailModal" tabindex="-1" aria-labelledby="editDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDetailModalLabel">Редактирование детали</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Edit", "Detail")">
+                <div class="modal-body">
+                    <input type="hidden" name="Id" value="@Model.Id" />
+                    <div class="mb-3">
+                        <label for="Number" class="form-label">Номер детали</label>
+                        <input type="text" class="form-control" id="Number" name="Number" value="@Model.Number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="Name" class="form-label">Название детали</label>
+                        <input type="text" class="form-control" id="Name" name="Name" value="@Model.Name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания партии -->
+<div class="modal fade" id="createBatchModal" tabindex="-1" aria-labelledby="createBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createBatchModalLabel">Создание партии @Model.Name</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="@Url.Action("Create", "Batch")">
+                <div class="modal-body">
+                    <input type="hidden" name="DetailId" value="@Model.Id" />
+                    <div class="mb-3">
+                        <label for="Quantity" class="form-label">Количество деталей</label>
+                        <input type="number" class="form-control" id="Quantity" name="Quantity" min="1" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="SplitBatch">
+                        <label class="form-check-label" for="SplitBatch">Разделить на подпартии</label>
+                    </div>
+                    <div id="subBatchContainer" class="d-none">
+                        <div class="mb-3">
+                            <label for="subBatchCount" class="form-label">Количество подпартий</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="subBatchCount" min="2" value="2">
+                                <button class="btn btn-outline-secondary" type="button" id="generateSubBatches">Сгенерировать</button>
+                            </div>
+                        </div>
+                        <div id="subBatchFields"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать партию</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Загрузка активных партий
+            loadActiveBatches();
+
+            // Управление формой подпартий
+            $('#SplitBatch').change(function() {
+                $('#subBatchContainer').toggleClass('d-none', !this.checked);
+                if (this.checked) {
+                    generateSubBatchFields();
+                }
+            });
+
+            $('#generateSubBatches').click(generateSubBatchFields);
+
+            // Первоначальная генерация полей подпартий
+            function generateSubBatchFields() {
+                const totalQuantity = parseInt($('#Quantity').val()) || 0;
+                const subBatchCount = parseInt($('#subBatchCount').val()) || 2;
+
+                if (totalQuantity > 0 && subBatchCount > 1) {
+                    // Расчет примерного равного распределения
+                    const baseQuantity = Math.floor(totalQuantity / subBatchCount);
+                    const remainder = totalQuantity % subBatchCount;
+
+                    // Генерация полей ввода
+                    const container = $('#subBatchFields');
+                    container.empty();
+
+                    for (let i = 0; i < subBatchCount; i++) {
+                        const quantity = i === 0 ? baseQuantity + remainder : baseQuantity;
+                        container.append(`
+                            <div class="mb-3">
+                                <label class="form-label">Подпартия ${i+1}</label>
+                                <input type="number" class="form-control subBatchQuantity"
+                                       name="SubBatches[${i}].Quantity" value="${quantity}" min="1" required>
+                            </div>
+                        `);
+                    }
+                }
+            }
+
+            // Проверка суммы подпартий перед отправкой формы
+            $('form').on('submit', function(e) {
+                if ($('#SplitBatch').is(':checked')) {
+                    const totalQuantity = parseInt($('#Quantity').val()) || 0;
+                    let subBatchTotal = 0;
+
+                    $('.subBatchQuantity').each(function() {
+                        subBatchTotal += parseInt($(this).val()) || 0;
+                    });
+
+                    if (subBatchTotal !== totalQuantity) {
+                        alert(`Сумма количества в подпартиях (${subBatchTotal}) не равна общему количеству (${totalQuantity})`);
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+            });
+        });
+
+        // Загрузка активных партий для детали
+        function loadActiveBatches() {
+            $.getJSON('/api/gantt/stages', function(data) {
+                // Фильтрация только активных этапов для текущей детали
+                const detailId = @Model.Id;
+                const activeBatches = new Map();
+
+                // Группировка по партиям
+                data.forEach(function(stage) {
+                    if (stage.detailId === detailId &&
+                        (stage.status === 'InProgress' || stage.status === 'Waiting' || stage.status === 'Pending')) {
+
+                        if (!activeBatches.has(stage.batchId)) {
+                            activeBatches.set(stage.batchId, {
+                                batchId: stage.batchId,
+                                stages: []
+                            });
+                        }
+
+                        activeBatches.get(stage.batchId).stages.push(stage);
+                    }
+                });
+
+                // Отображение активных партий
+                const container = $('#active-batches');
+                container.empty();
+
+                if (activeBatches.size > 0) {
+                    container.append(`
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID партии</th>
+                                        <th>Текущий этап</th>
+                                        <th>Станок</th>
+                                        <th>Статус</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="active-batches-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    `);
+
+                    const tbody = $('#active-batches-body');
+
+                    activeBatches.forEach(function(batch) {
+                        // Находим текущий этап (в работе или следующий)
+                        const currentStage = batch.stages.find(s => s.status === 'InProgress') ||
+                                           batch.stages.find(s => s.status === 'Pending') ||
+                                           batch.stages[0];
+
+                        const statusBadge = getStatusBadge(currentStage.status);
+
+                        tbody.append(`
+                            <tr>
+                                <td>${batch.batchId}</td>
+                                <td>${currentStage.stageName}</td>
+                                <td>${currentStage.machineName || 'Не назначен'}</td>
+                                <td>${statusBadge}</td>
+                                <td>
+                                    <a href="/Batch/Details/${batch.batchId}" class="btn btn-sm btn-outline-primary">
+                                        Подробнее
+                                    </a>
+                                </td>
+                            </tr>
+                        `);
+                    });
+                } else {
+                    container.html(`
+                        <div class="text-center py-4">
+                            <p class="text-muted">Нет активных партий для этой детали</p>
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        // Получение HTML-кода бейджа статуса
+        function getStatusBadge(status) {
+            switch (status) {
+                case 'InProgress':
+                    return '<span class="badge bg-primary">В работе</span>';
+                case 'Waiting':
+                    return '<span class="badge bg-warning text-dark">В очереди</span>';
+                case 'Paused':
+                    return '<span class="badge bg-secondary">На паузе</span>';
+                case 'Pending':
+                    return '<span class="badge bg-info text-dark">Ожидает запуска</span>';
+                case 'Completed':
+                    return '<span class="badge bg-success">Завершено</span>';
+                default:
+                    return '<span class="badge bg-light text-dark">' + status + '</span>';
+            }
+        }
+    </script>
+}
