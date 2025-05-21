@@ -1,13 +1,15 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Project.Domain.Entities; // Импортируй пространство имен моделей (подставь своё имя)
+using Project.Domain.Entities;
 
 namespace Project.Infrastructure.Data
 {
     public class ManufacturingDbContext : DbContext
     {
-        public ManufacturingDbContext(DbContextOptions<ManufacturingDbContext> options) : base(options) { }
+        public ManufacturingDbContext(DbContextOptions<ManufacturingDbContext> options)
+            : base(options)
+        {
+        }
 
-        // DbSets
         public DbSet<Detail> Details { get; set; }
         public DbSet<MachineType> MachineTypes { get; set; }
         public DbSet<Machine> Machines { get; set; }
@@ -20,31 +22,37 @@ namespace Project.Infrastructure.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Detail
+            base.OnModelCreating(modelBuilder);
+
+            // Настройка Detail
             modelBuilder.Entity<Detail>()
                 .HasIndex(d => d.Number)
                 .IsUnique();
 
-            // MachineType
+            // Настройка MachineType
             modelBuilder.Entity<MachineType>()
-                .HasMany(mt => mt.Machines)
-                .WithOne(m => m.MachineType)
-                .HasForeignKey(m => m.MachineTypeId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .HasIndex(mt => mt.Name)
+                .IsUnique();
 
-            // Machine
+            // Настройка Machine
             modelBuilder.Entity<Machine>()
                 .HasIndex(m => m.InventoryNumber)
                 .IsUnique();
 
-            // Route
+            modelBuilder.Entity<Machine>()
+                .HasOne(m => m.MachineType)
+                .WithMany(mt => mt.Machines)
+                .HasForeignKey(m => m.MachineTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Настройка Route
             modelBuilder.Entity<Route>()
                 .HasOne(r => r.Detail)
                 .WithMany(d => d.Routes)
                 .HasForeignKey(r => r.DetailId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // RouteStage
+            // Настройка RouteStage
             modelBuilder.Entity<RouteStage>()
                 .HasOne(rs => rs.Route)
                 .WithMany(r => r.Stages)
@@ -57,21 +65,21 @@ namespace Project.Infrastructure.Data
                 .HasForeignKey(rs => rs.MachineTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Batch
+            // Настройка Batch
             modelBuilder.Entity<Batch>()
                 .HasOne(b => b.Detail)
                 .WithMany()
                 .HasForeignKey(b => b.DetailId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // SubBatch
+            // Настройка SubBatch
             modelBuilder.Entity<SubBatch>()
                 .HasOne(sb => sb.Batch)
                 .WithMany(b => b.SubBatches)
                 .HasForeignKey(sb => sb.BatchId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // StageExecution
+            // Настройка StageExecution
             modelBuilder.Entity<StageExecution>()
                 .HasOne(se => se.SubBatch)
                 .WithMany(sb => sb.StageExecutions)
@@ -90,12 +98,12 @@ namespace Project.Infrastructure.Data
                 .HasForeignKey(se => se.MachineId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // SetupTime
+            // Настройка SetupTime
             modelBuilder.Entity<SetupTime>()
                 .HasOne(st => st.Machine)
                 .WithMany()
                 .HasForeignKey(st => st.MachineId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<SetupTime>()
                 .HasOne(st => st.FromDetail)
@@ -109,10 +117,27 @@ namespace Project.Infrastructure.Data
                 .HasForeignKey(st => st.ToDetailId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Enum to string for StageExecutionStatus
+            // Создание составного индекса для таблицы SetupTime
+            modelBuilder.Entity<SetupTime>()
+                .HasIndex(st => new { st.MachineId, st.FromDetailId, st.ToDetailId })
+                .IsUnique();
+
+            // Создание индекса для ускорения запросов по статусу и периоду
             modelBuilder.Entity<StageExecution>()
-                .Property(se => se.Status)
-                .HasConversion<string>();
+                .HasIndex(se => se.Status);
+
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.StartTimeUtc);
+
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.MachineId);
+
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.IsSetup);
+
+            // Индекс для быстрого поиска по подпартии
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.SubBatchId);
         }
     }
 }
