@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Project.Application.BackgroundServices;
 using Project.Application.Services;
 using Project.Domain.Repositories;
 using Project.Infrastructure.Data;
@@ -9,10 +10,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+// Регистрация DbContext
 builder.Services.AddDbContext<ManufacturingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Репозитории
+// Регистрация репозиториев
 builder.Services.AddScoped<IDetailRepository, DetailRepository>();
 builder.Services.AddScoped<IMachineTypeRepository, MachineTypeRepository>();
 builder.Services.AddScoped<IMachineRepository, MachineRepository>();
@@ -20,17 +22,20 @@ builder.Services.AddScoped<IRouteRepository, RouteRepository>();
 builder.Services.AddScoped<IBatchRepository, BatchRepository>();
 builder.Services.AddScoped<ISetupTimeRepository, SetupTimeRepository>();
 
-// Сервисы
-builder.Services.AddScoped<MachineTypeService>();
+// Регистрация сервисов
 builder.Services.AddScoped<DetailService>();
+builder.Services.AddScoped<MachineTypeService>();
 builder.Services.AddScoped<MachineService>();
 builder.Services.AddScoped<RouteService>();
-builder.Services.AddScoped<BatchService>();
 builder.Services.AddScoped<StageExecutionService>();
 builder.Services.AddScoped<SetupTimeService>();
+builder.Services.AddScoped<BatchService>();
 builder.Services.AddScoped<ProductionSchedulerService>();
 builder.Services.AddScoped<HistoryService>();
 builder.Services.AddScoped<PlanningService>();
+
+// Регистрация фоновой службы для автоматического планирования производства
+builder.Services.AddHostedService<ProductionSchedulerBackgroundService>();
 
 var app = builder.Build();
 

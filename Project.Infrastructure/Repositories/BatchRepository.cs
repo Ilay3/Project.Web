@@ -251,5 +251,292 @@ namespace Project.Infrastructure.Repositories
                 .OrderByDescending(se => se.StartTimeUtc)
                 .ToListAsync();
         }
+
+        // Получение всех этапов в статусе "Pending" (готовы к запуску)
+        public async Task<List<StageExecution>> GetPendingStagesAsync()
+        {
+            return await _db.StageExecutions
+                .Include(se => se.SubBatch)
+                    .ThenInclude(sb => sb.Batch)
+                        .ThenInclude(b => b.Detail)
+                .Include(se => se.RouteStage)
+                    .ThenInclude(rs => rs.MachineType)
+                .Include(se => se.Machine)
+                .Where(se => se.Status == StageExecutionStatus.Pending)
+                .OrderBy(se => se.SubBatch.Batch.CreatedUtc) // Сначала старые партии
+                .ThenBy(se => se.RouteStage.Order) // Затем по порядку этапов
+                .ToListAsync();
+        }
+
+        // Получение недавно завершенных этапов, которые еще не обработаны системой планирования
+        public async Task<List<StageExecution>> GetRecentlyCompletedStagesAsync()
+        {
+            // Получаем этапы, завершенные в течение последнего часа
+            var oneHourAgo = DateTime.UtcNow.AddHours(-1);
+
+            return await _db.StageExecutions
+                .Include(se => se.SubBatch)
+                    .ThenInclude(sb => sb.Batch)
+                        .ThenInclude(b => b.Detail)
+                .Include(se => se.RouteStage)
+                .Include(se => se.Machine)
+                .Where(se => se.Status == StageExecutionStatus.Completed &&
+                            se.EndTimeUtc >= oneHourAgo &&
+                            !se.IsProcessedByScheduler) // Добавим новое поле в сущность
+                .OrderBy(se => se.EndTimeUtc)
+                .ToListAsync();
+        }
+
+        // Получение следующих доступных этапов для указанной подпартии
+        public async Task<List<StageExecution>> GetNextAvailableStagesForSubBatchAsync(int subBatchId)
+        {
+            var subBatch = await _db.SubBatches
+                .Include(sb => sb.StageExecutions)
+                    .ThenInclude(se => se.RouteStage)
+                .FirstOrDefaultAsync(sb => sb.Id == subBatchId);
+
+            if (subBatch == null) return new List<StageExecution>();
+
+            // Находим последний завершенный этап
+            var lastCompletedStage = subBatch.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.Completed && !se.IsSetup)
+                .OrderByDescending(se => se.RouteStage.Order)
+                .FirstOrDefault();
+
+            // Если нет завершенных этапов, возвращаем первый этап
+            var nextStageOrder = lastCompletedStage == null ?
+                0 : lastCompletedStage.RouteStage.Order;
+
+            // Находим следующие этапы
+            return subBatch.StageExecutions
+                .Where(se => !se.IsSetup && se.RouteStage.Order > nextStageOrder &&
+                            (se.Status == StageExecutionStatus.Pending || se.Status == StageExecutionStatus.Waiting))
+                .OrderBy(se => se.RouteStage.Order)
+                .ToList();
+        }
+
+        // Получение списка свободных станков, подходящих для указанного этапа
+        public async Task<List<Machine>> GetAvailableMachinesForStageAsync(int stageExecutionId)
+        {
+            var stage = await _db.StageExecutions
+                .Include(se => se.RouteStage)
+                .FirstOrDefaultAsync(se => se.Id == stageExecutionId);
+
+            if (stage == null) return new List<Machine>();
+
+            // Получаем все станки нужного типа
+            var machineTypeId = stage.RouteStage.MachineTypeId;
+
+            // Получаем ID станков, которые сейчас заняты
+            var busyMachineIds = await _db.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.InProgress && se.MachineId.HasValue)
+                .Select(se => se.MachineId.Value)
+                .Distinct()
+                .ToListAsync();
+
+            // Находим свободные станки указанного типа
+            return await _db.Machines
+                .Include(m => m.MachineType)
+                .Where(m => m.MachineTypeId == machineTypeId && !busyMachineIds.Contains(m.Id))
+                .OrderByDescending(m => m.Priority)
+                .ToListAsync();
+        }
+
+        // Обновление статуса обработки для завершенного этапа
+        public async Task MarkStageAsProcessedAsync(int stageExecutionId)
+        {
+            var stage = await _db.StageExecutions.FindAsync(stageExecutionId);
+            if (stage != null)
+            {
+                stage.IsProcessedByScheduler = true;
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        // Получение информации о загрузке станков на указанный период
+        public async Task<Dictionary<int, List<StageExecution>>> GetMachineScheduleAsync(DateTime startDate, DateTime endDate)
+        {
+            var scheduledStages = await _db.StageExecutions
+                .Include(se => se.SubBatch)
+                    .ThenInclude(sb => sb.Batch)
+                        .ThenInclude(b => b.Detail)
+                .Include(se => se.RouteStage)
+                .Include(se => se.Machine)
+                .Where(se => se.MachineId.HasValue &&
+                           ((se.StartTimeUtc.HasValue && se.StartTimeUtc >= startDate && se.StartTimeUtc <= endDate) ||
+                            (se.EndTimeUtc.HasValue && se.EndTimeUtc >= startDate && se.EndTimeUtc <= endDate) ||
+                            (se.Status == StageExecutionStatus.InProgress) ||
+                            (se.Status == StageExecutionStatus.Pending && se.MachineId.HasValue)))
+                .ToListAsync();
+
+            // Группируем по станкам
+            var result = new Dictionary<int, List<StageExecution>>();
+
+            foreach (var stage in scheduledStages)
+            {
+                if (stage.MachineId.HasValue)
+                {
+                    var machineId = stage.MachineId.Value;
+
+                    if (!result.ContainsKey(machineId))
+                    {
+                        result[machineId] = new List<StageExecution>();
+                    }
+
+                    result[machineId].Add(stage);
+                }
+            }
+
+            return result;
+        }
+
+        // Получение прогнозируемого времени завершения для указанной партии
+        public async Task<DateTime?> GetEstimatedCompletionTimeForBatchAsync(int batchId)
+        {
+            var batch = await _db.Batches
+                .Include(b => b.SubBatches)
+                    .ThenInclude(sb => sb.StageExecutions)
+                        .ThenInclude(se => se.RouteStage)
+                .FirstOrDefaultAsync(b => b.Id == batchId);
+
+            if (batch == null) return null;
+
+            DateTime latestEndTime = DateTime.UtcNow;
+
+            // Проходим по всем подпартиям
+            foreach (var subBatch in batch.SubBatches)
+            {
+                // Находим последний этап в маршруте
+                var lastStage = subBatch.StageExecutions
+                    .Where(se => !se.IsSetup)
+                    .OrderByDescending(se => se.RouteStage.Order)
+                    .FirstOrDefault();
+
+                if (lastStage == null) continue;
+
+                // Если этап завершен, используем фактическое время завершения
+                if (lastStage.Status == StageExecutionStatus.Completed && lastStage.EndTimeUtc.HasValue)
+                {
+                    if (lastStage.EndTimeUtc.Value > latestEndTime)
+                    {
+                        latestEndTime = lastStage.EndTimeUtc.Value;
+                    }
+                }
+                // Если этап в процессе, оцениваем время завершения
+                else if (lastStage.Status == StageExecutionStatus.InProgress && lastStage.StartTimeUtc.HasValue)
+                {
+                    // Расчет оставшегося времени на основе нормы времени и количества деталей
+                    var totalDuration = TimeSpan.FromHours(lastStage.RouteStage.NormTime * subBatch.Quantity);
+                    var elapsedTime = DateTime.UtcNow - lastStage.StartTimeUtc.Value;
+                    var remainingTime = totalDuration > elapsedTime ? totalDuration - elapsedTime : TimeSpan.FromMinutes(30);
+
+                    var estimatedEndTime = DateTime.UtcNow.Add(remainingTime);
+                    if (estimatedEndTime > latestEndTime)
+                    {
+                        latestEndTime = estimatedEndTime;
+                    }
+                }
+                // Если этап ожидает или в очереди, оцениваем на основе предыдущих этапов и нормы времени
+                else
+                {
+                    // Находим все незавершенные этапы
+                    var pendingStages = subBatch.StageExecutions
+                        .Where(se => !se.IsSetup && se.Status != StageExecutionStatus.Completed)
+                        .OrderBy(se => se.RouteStage.Order)
+                        .ToList();
+
+                    // Суммируем время на выполнение
+                    var remainingTime = TimeSpan.FromHours(
+                        pendingStages.Sum(se => se.RouteStage.NormTime * subBatch.Quantity));
+
+                    // Добавляем время на переналадки (примерная оценка)
+                    remainingTime = remainingTime.Add(TimeSpan.FromHours(pendingStages.Count() * 0.5));
+
+                    var estimatedEndTime = DateTime.UtcNow.Add(remainingTime);
+                    if (estimatedEndTime > latestEndTime)
+                    {
+                        latestEndTime = estimatedEndTime;
+                    }
+                }
+            }
+
+            return latestEndTime;
+        }
+
+        // Проверка наличия возможных конфликтов в расписании
+        public async Task<List<ScheduleConflict>> GetScheduleConflictsAsync()
+        {
+            var result = new List<ScheduleConflict>();
+
+            // Получаем текущее и будущее расписание
+            var schedule = await GetMachineScheduleAsync(DateTime.UtcNow, DateTime.UtcNow.AddDays(7));
+
+            foreach (var machineSchedule in schedule)
+            {
+                var machineId = machineSchedule.Key;
+                var machineStages = machineSchedule.Value
+                    .OrderBy(s => s.StartTimeUtc)
+                    .ThenBy(s => s.ScheduledStartTimeUtc)
+                    .ToList();
+
+                // Проверяем наличие пересечений во времени
+                for (int i = 0; i < machineStages.Count - 1; i++)
+                {
+                    var currentStage = machineStages[i];
+                    var nextStage = machineStages[i + 1];
+
+                    // Определяем фактическое или ожидаемое время завершения текущего этапа
+                    DateTime? currentEndTime = currentStage.EndTimeUtc;
+                    if (!currentEndTime.HasValue && currentStage.StartTimeUtc.HasValue)
+                    {
+                        // Оцениваем время завершения по норме времени
+                        var duration = TimeSpan.FromHours(currentStage.IsSetup ?
+                            currentStage.RouteStage.SetupTime :
+                            currentStage.RouteStage.NormTime * currentStage.SubBatch.Quantity);
+
+                        currentEndTime = currentStage.StartTimeUtc.Value.Add(duration);
+                    }
+
+                    // Определяем фактическое или запланированное время начала следующего этапа
+                    DateTime? nextStartTime = nextStage.StartTimeUtc ?? nextStage.ScheduledStartTimeUtc;
+
+                    // Проверяем пересечение
+                    if (currentEndTime.HasValue && nextStartTime.HasValue && currentEndTime.Value > nextStartTime.Value)
+                    {
+                        // Найден конфликт
+                        result.Add(new ScheduleConflict
+                        {
+                            MachineId = machineId,
+                            MachineName = machineStages[0].Machine?.Name ?? $"Станок #{machineId}",
+                            ConflictingStages = new List<StageExecution> { currentStage, nextStage },
+                            ConflictStartTime = nextStartTime.Value,
+                            ConflictEndTime = currentEndTime.Value,
+                            ConflictType = "Overlap"
+                        });
+                    }
+                }
+
+                // Проверяем наличие параллельных этапов в работе (двойное назначение)
+                var inProgressStages = machineStages
+                    .Where(s => s.Status == StageExecutionStatus.InProgress)
+                    .ToList();
+
+                if (inProgressStages.Count > 1)
+                {
+                    result.Add(new ScheduleConflict
+                    {
+                        MachineId = machineId,
+                        MachineName = machineStages[0].Machine?.Name ?? $"Станок #{machineId}",
+                        ConflictingStages = inProgressStages,
+                        ConflictStartTime = DateTime.UtcNow,
+                        ConflictEndTime = DateTime.UtcNow.AddHours(1), // Условно 1 час
+                        ConflictType = "DoubleBooking"
+                    });
+                }
+            }
+
+            return result;
+        }
+
     }
 }

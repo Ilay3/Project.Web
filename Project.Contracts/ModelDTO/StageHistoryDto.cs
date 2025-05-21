@@ -24,6 +24,7 @@ namespace Project.Contracts.ModelDTO
         public string OperatorId { get; set; }
         public string ReasonNote { get; set; }
         public double? Duration { get; set; } // Фактическая длительность в часах
+        public DateTime? StatusChangedTimeUtc { get; set; }
     }
 
     public class StageHistoryFilterDto

@@ -1,6 +1,6 @@
-﻿@model WorkstationViewModel
+﻿@model OperatorWorkspaceViewModel
 @{
-    ViewData["Title"] = "Рабочая станция: " + Model.MachineName;
+    ViewData["Title"] = "Рабочее место: " + Model.MachineName;
 }
 
 <div class="container-fluid">
@@ -10,7 +10,7 @@
             <p class="lead">Тип: @Model.MachineTypeName</p>
         </div>
         <div class="col-auto">
-            <a href="@Url.Action("Index", "Workstation")" class="btn btn-outline-primary">
+            <a href="@Url.Action("Index", "OperatorWorkspace")" class="btn btn-outline-primary">
                 <i class="bi bi-arrow-left"></i> К списку станков
             </a>
         </div>
@@ -20,6 +20,13 @@
     {
         <div class="alert alert-danger mb-3">
             @TempData["ErrorMessage"]
+        </div>
+    }
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success mb-3">
+            @TempData["SuccessMessage"]
         </div>
     }
 
@@ -37,26 +44,37 @@
                         <div class="current-stage p-4 border rounded bg-light">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h3>@(Model.CurrentStage.IsSetup ? "Переналадка: " : "")@Model.CurrentStage.StageName</h3>
-                                <span class="badge bg-primary fs-5 p-2">В работе</span>
+                                <span class="badge @Model.CurrentStage.StatusColorClass fs-5 p-2">@Model.CurrentStage.StatusDisplayName</span>
                             </div>
                             <div class="row mb-3">
                                 <div class="col-md-6">
+                                    <p><strong>Деталь:</strong> @Model.CurrentStage.DetailName</p>
                                     <p><strong>Время начала:</strong> @Model.CurrentStage.StartTime?.ToString("dd.MM.yyyy HH:mm:ss")</p>
-                                    <p><strong>Время в работе:</strong> <span id="elapsed-time">0:00:00</span></p>
+                                    <p><strong>Время в работе:</strong> <span id="elapsed-time">@Model.CurrentStage.ElapsedTimeFormatted</span></p>
                                 </div>
                                 <div class="col-md-6">
                                     <p><strong>ID этапа:</strong> #@Model.CurrentStage.Id</p>
                                     <p><strong>Тип:</strong> @(Model.CurrentStage.IsSetup ? "Переналадка" : "Операция")</p>
+                                    @if (!string.IsNullOrEmpty(Model.CurrentStage.OperatorId))
+                                    {
+                                        <p><strong>Оператор:</strong> @Model.CurrentStage.OperatorId</p>
+                                    }
                                 </div>
                             </div>
                             
                             <div class="progress mb-4" style="height: 25px;">
-                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                     role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                            </div>>
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated @Model.CurrentStage.StatusColorClass" 
+                                     role="progressbar" style="width: @Model.CurrentStage.CompletionPercentage%" 
+                                     aria-valuenow="@Model.CurrentStage.CompletionPercentage" aria-valuemin="0" aria-valuemax="100">
+                                    @Math.Round(Model.CurrentStage.CompletionPercentage, 0)%
+                                </div>
+                            </div>
 
                             <div class="d-flex justify-content-between">
-                                <form method="post" action="@Url.Action("PauseStage", "Workstation", new { id = Model.CurrentStage.Id })">
+                                <form method="post" action="@Url.Action("PauseStage", "OperatorWorkspace")">
+                                    <input type="hidden" name="id" value="@Model.CurrentStage.Id" />
+                                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                    <input type="hidden" name="operatorId" value="@Model.OperatorId" />
                                     <button type="submit" class="btn btn-warning btn-lg">
                                         <i class="bi bi-pause-fill"></i> Пауза
                                     </button>
@@ -66,7 +84,10 @@
                                     <i class="bi bi-card-text"></i> Добавить примечание
                                 </button>
                                 
-                                <form method="post" action="@Url.Action("CompleteStage", "Workstation", new { id = Model.CurrentStage.Id })">
+                                <form method="post" action="@Url.Action("CompleteStage", "OperatorWorkspace")">
+                                    <input type="hidden" name="id" value="@Model.CurrentStage.Id" />
+                                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                    <input type="hidden" name="operatorId" value="@Model.OperatorId" />
                                     <button type="submit" class="btn btn-success btn-lg">
                                         <i class="bi bi-check-lg"></i> Завершить
                                     </button>
@@ -79,12 +100,27 @@
                         <div class="next-stage p-4 border rounded bg-light">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h3>@(Model.NextStage.IsSetup ? "Переналадка: " : "")@Model.NextStage.StageName</h3>
-                                <span class="badge bg-warning text-dark fs-5 p-2">Ожидает запуска</span>
+                                <span class="badge @Model.NextStage.StatusColorClass fs-5 p-2">@Model.NextStage.StatusDisplayName</span>
                             </div>
-                            <p class="mb-4">Этап готов к запуску. Нажмите кнопку "Начать", чтобы приступить к выполнению.</p>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <p><strong>Деталь:</strong> @Model.NextStage.DetailName</p>
+                                    @if (Model.NextStage.ScheduledStartTime.HasValue)
+                                    {
+                                        <p><strong>Плановое начало:</strong> @Model.NextStage.ScheduledStartTime.Value.ToString("dd.MM.yyyy HH:mm")</p>
+                                    }
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>ID этапа:</strong> #@Model.NextStage.Id</p>
+                                    <p><strong>Тип:</strong> @(Model.NextStage.IsSetup ? "Переналадка" : "Операция")</p>
+                                </div>
+                            </div>
                             
                             <div class="text-center">
-                                <form method="post" action="@Url.Action("StartStage", "Workstation", new { id = Model.NextStage.Id })">
+                                <form method="post" action="@Url.Action("StartStage", "OperatorWorkspace")">
+                                    <input type="hidden" name="id" value="@Model.NextStage.Id" />
+                                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                    <input type="hidden" name="operatorId" value="@Model.OperatorId" />
                                     <button type="submit" class="btn btn-primary btn-lg">
                                         <i class="bi bi-play-fill"></i> Начать
                                     </button>
@@ -129,8 +165,17 @@
                                             <td>@stage.StageName</td>
                                             <td>@stage.DetailName</td>
                                             <td>@(stage.IsSetup ? "Переналадка" : "Операция")</td>
-                                            <td><span class="badge bg-warning text-dark">В очереди</span></td>
-                                            <td>@stage.ScheduledStartTime?.ToString("dd.MM.yyyy HH:mm")</td>
+                                            <td><span class="badge @stage.StatusColorClass">@stage.StatusDisplayName</span></td>
+                                            <td>
+                                                @if (stage.ScheduledStartTime.HasValue)
+                                                {
+                                                    @stage.ScheduledStartTime.Value.ToString("dd.MM.yyyy HH:mm")
+                                                }
+                                                else
+                                                {
+                                                    <span>Не запланировано</span>
+                                                }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -168,13 +213,19 @@
                     </div>
                     
                     <div class="progress mb-2" style="height: 25px;">
-                        <div class="progress-bar bg-success" style="width: @(Model.TotalWorkHours / (Model.TotalWorkHours + Model.TotalSetupHours + Model.TotalIdleHours) * 100)%">
+                        @{ 
+                            var totalTime = Model.TotalWorkHours + Model.TotalSetupHours + Model.TotalIdleHours;
+                            var workPercent = totalTime > 0 ? (Model.TotalWorkHours / totalTime) * 100 : 0;
+                            var setupPercent = totalTime > 0 ? (Model.TotalSetupHours / totalTime) * 100 : 0; 
+                            var idlePercent = totalTime > 0 ? (Model.TotalIdleHours / totalTime) * 100 : 0;
+                        }
+                        <div class="progress-bar bg-success" style="width: @workPercent%">
                             Работа
                         </div>
-                        <div class="progress-bar bg-info" style="width: @(Model.TotalSetupHours / (Model.TotalWorkHours + Model.TotalSetupHours + Model.TotalIdleHours) * 100)%">
+                        <div class="progress-bar bg-info" style="width: @setupPercent%">
                             Переналадка
                         </div>
-                        <div class="progress-bar bg-secondary" style="width: @(Model.TotalIdleHours / (Model.TotalWorkHours + Model.TotalSetupHours + Model.TotalIdleHours) * 100)%">
+                        <div class="progress-bar bg-secondary" style="width: @idlePercent%">
                             Простой
                         </div>
                     </div>
@@ -243,11 +294,13 @@
                 <h5 class="modal-title" id="notesModalLabel">Добавить примечание</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="post" action="@Url.Action("AddNote", "Workstation", new { id = Model.CurrentStage?.Id })">
+            <form method="post" action="@Url.Action("AddNote", "OperatorWorkspace")">
                 <div class="modal-body">
+                    <input type="hidden" name="id" value="@Model.CurrentStage?.Id" />
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
                     <div class="mb-3">
                         <label for="operatorId" class="form-label">ID оператора</label>
-                        <input type="text" class="form-control" id="operatorId" name="operatorId">
+                        <input type="text" class="form-control" id="operatorId" name="operatorId" value="@Model.OperatorId">
                     </div>
                     <div class="mb-3">
                         <label for="note" class="form-label">Примечание</label>
@@ -287,11 +340,13 @@
                 document.getElementById('elapsed-time').textContent = 
                     `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                 
-                // Обновление прогресс-бара (предполагаемая продолжительность - 1 час)
-                const estimatedDuration = 3600000; // 1 час в миллисекундах
-                const progressPercent = Math.min(100, Math.round((elapsedMs / estimatedDuration) * 100));
-                
+                // Обновление прогресс-бара
                 const progressBar = document.getElementById('progress-bar');
+                
+                // Расчет прогресса в зависимости от планового времени
+                const plannedDurationMs = @((Model.CurrentStage.PlannedDuration.TotalMilliseconds).ToString()) || 3600000;
+                const progressPercent = Math.min(100, Math.round((elapsedMs / plannedDurationMs) * 100));
+                
                 progressBar.style.width = `${progressPercent}%`;
                 progressBar.setAttribute('aria-valuenow', progressPercent);
                 progressBar.textContent = `${progressPercent}%`;
@@ -311,6 +366,53 @@
             }
         }
         
+        // Периодическое обновление данных со страницы
+        function refreshWorkspaceData() {
+            if (!@Model.EnableAutoRefresh.ToString().ToLower()) return;
+            
+            // Запрос новых данных с сервера
+            fetch('@Url.Action("GetWorkspaceData", "OperatorWorkspace", new { machineId = Model.MachineId })')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка при получении данных');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Проверяем, изменился ли текущий этап или его статус
+                    if (data.currentStage && '@(Model.CurrentStage?.Id ?? 0)' != data.currentStage.id) {
+                        // Если этап изменился, перезагружаем страницу
+                        location.reload();
+                    }
+                    else if (data.currentStage && '@(Model.CurrentStage?.Status ?? "None")' != data.currentStage.status) {
+                        // Если статус этапа изменился, перезагружаем страницу
+                        location.reload();
+                    }
+                    else if (!data.currentStage && '@(Model.CurrentStage?.Id ?? 0)' != '0') {
+                        // Если этап был завершен, перезагружаем страницу
+                        location.reload();
+                    }
+                    else if (data.nextStage && !@(Model.CurrentStage != null).ToString().ToLower()) {
+                        // Если появился следующий этап, а текущего не было
+                        location.reload();
+                    }
+                    
+                    // Проверяем изменения в очереди
+                    if (data.queuedStages.length != @Model.QueuedStages.Count) {
+                        location.reload();
+                    }
+                    
+                    // Если нужно обновить уведомления
+                    if (@Model.PlaySoundNotifications.ToString().ToLower()) {
+                        // Проверяем наличие изменений, требующих звукового уведомления
+                        // Например, если появился новый этап в очереди
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при обновлении данных:', error);
+                });
+        }
+        
         // Инициализация страницы
         $(document).ready(function() {
             // Обновление часов каждую секунду
@@ -321,7 +423,10 @@
             updateElapsedTime();
             setInterval(updateElapsedTime, 1000);
             
-            // Автоматическое обновление страницы каждые 5 минут
+            // Периодическое обновление данных
+            setInterval(refreshWorkspaceData, @(Model.RefreshIntervalSeconds * 1000));
+            
+            // Автоматическое обновление страницы каждые 5 минут (на всякий случай)
             setTimeout(function() {
                 location.reload();
             }, 300000); // 5 минут

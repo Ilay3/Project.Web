@@ -1,4 +1,5 @@
-﻿using Project.Contracts.ModelDTO;
+﻿using Microsoft.Extensions.Logging;
+using Project.Contracts.ModelDTO;
 using Project.Domain.Entities;
 using Project.Domain.Repositories;
 using System;
@@ -15,19 +16,22 @@ namespace Project.Application.Services
         private readonly IRouteRepository _routeRepo;
         private readonly ISetupTimeRepository _setupTimeRepo;
         private readonly StageExecutionService _stageService;
+        private readonly ILogger<ProductionSchedulerService> _logger;
 
         public ProductionSchedulerService(
             IBatchRepository batchRepo,
             IMachineRepository machineRepo,
             IRouteRepository routeRepo,
             ISetupTimeRepository setupTimeRepo,
-            StageExecutionService stageService)
+            StageExecutionService stageService,
+            ILogger<ProductionSchedulerService> logger)
         {
             _batchRepo = batchRepo;
             _machineRepo = machineRepo;
             _routeRepo = routeRepo;
             _setupTimeRepo = setupTimeRepo;
             _stageService = stageService;
+            _logger = logger;
         }
 
         // Создание производственного задания (партии)
@@ -380,7 +384,323 @@ namespace Project.Application.Services
 
             return estimatedEndTime;
         }
+
+        /// <summary>
+        /// Проверяет, можно ли запустить указанный этап
+        /// </summary>
+        public async Task<bool> CanStartStageAsync(int stageExecutionId)
+        {
+            var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+            if (stage == null) return false;
+
+            // Если этап уже не в статусе Pending, его нельзя запустить
+            if (stage.Status != StageExecutionStatus.Pending) return false;
+
+            // Для этапа переналадки не требуется проверка предыдущих этапов
+            if (stage.IsSetup) return true;
+
+            // Проверяем, все ли предыдущие этапы завершены
+            return await CheckAllPreviousStagesCompletedAsync(stage);
+        }
+
+        /// <summary>
+        /// Запускает этап, который находится в статусе Pending
+        /// </summary>
+        public async Task<bool> StartPendingStageAsync(int stageExecutionId)
+        {
+            try
+            {
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+                if (stage == null) return false;
+
+                // Проверяем, можно ли запустить этап
+                if (!await CanStartStageAsync(stageExecutionId)) return false;
+
+                // Если этап требует переналадки, сначала создаем и запускаем этап переналадки
+                if (!stage.IsSetup)
+                {
+                    var setupStage = await _batchRepo.GetSetupStageForMainStageAsync(stageExecutionId);
+                    if (setupStage != null && setupStage.Status != StageExecutionStatus.Completed)
+                    {
+                        // Запускаем этап переналадки
+                        await _stageService.StartStageExecution(setupStage.Id);
+                        return true; // Основной этап запустится после завершения переналадки
+                    }
+                }
+
+                // Запускаем основной этап
+                await _stageService.StartStageExecution(stageExecutionId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при запуске этапа {StageId}", stageExecutionId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Автоматически выбирает и назначает оптимальный станок для этапа
+        /// </summary>
+        public async Task<bool> AutoAssignMachineToStageAsync(int stageExecutionId)
+        {
+            try
+            {
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+                if (stage == null) return false;
+
+                // Если этап уже назначен на станок, ничего не делаем
+                if (stage.MachineId.HasValue) return true;
+
+                // Получаем список доступных станков для этапа
+                var availableMachines = await _batchRepo.GetAvailableMachinesForStageAsync(stageExecutionId);
+                if (!availableMachines.Any()) return false;
+
+                // Выбираем станок с наивысшим приоритетом
+                var bestMachine = availableMachines.OrderByDescending(m => m.Priority).First();
+
+                // Назначаем этап на выбранный станок
+                await _stageService.AssignStageToMachine(stageExecutionId, bestMachine.Id);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при автоматическом назначении станка для этапа {StageId}", stageExecutionId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Оптимизирует очередь этапов для максимальной загрузки станков
+        /// </summary>
+        public async Task OptimizeQueueAsync()
+        {
+            try
+            {
+                // Получаем все этапы в очереди
+                var stagesInQueue = await _batchRepo.GetAllStagesInQueueAsync();
+                if (!stagesInQueue.Any()) return;
+
+                // Получаем текущее расписание станков
+                var startDate = DateTime.UtcNow;
+                var endDate = startDate.AddDays(7); // Рассматриваем неделю вперед
+                var machineSchedule = await _batchRepo.GetMachineScheduleAsync(startDate, endDate);
+
+                // Для каждого этапа в очереди пытаемся найти оптимальное расписание
+                foreach (var stage in stagesInQueue)
+                {
+                    // Получаем требуемый тип станка
+                    var machineTypeId = stage.RouteStage.MachineTypeId;
+
+                    // Получаем все станки этого типа
+                    var machines = await _machineRepo.GetMachinesByTypeAsync(machineTypeId);
+
+                    // Оцениваем возможность назначения на каждый станок
+                    var machineRatings = new Dictionary<int, double>();
+                    foreach (var machine in machines)
+                    {
+                        double rating = 0;
+
+                        // Чем выше приоритет станка, тем лучше
+                        rating += machine.Priority * 10;
+
+                        // Если станок свободен сейчас, это хорошо
+                        if (!machineSchedule.ContainsKey(machine.Id) ||
+                            !machineSchedule[machine.Id].Any(s =>
+                                s.Status == StageExecutionStatus.InProgress ||
+                                s.Status == StageExecutionStatus.Pending))
+                        {
+                            rating += 50;
+                        }
+
+                        // Чем раньше станок освободится, тем лучше
+                        var earliestAvailableTime = await CalculateMachineReleaseTimeAsync(machine.Id);
+                        var hoursUntilAvailable = (earliestAvailableTime - DateTime.UtcNow).TotalHours;
+                        rating -= hoursUntilAvailable * 5; // Штраф за ожидание
+
+                        // Если это тот же станок, что и для предыдущего этапа той же детали, уменьшаем переналадку
+                        var subBatch = stage.SubBatch;
+                        var previousStages = subBatch.StageExecutions
+                            .Where(s => s.Status == StageExecutionStatus.Completed)
+                            .OrderByDescending(s => s.EndTimeUtc)
+                            .ToList();
+
+                        if (previousStages.Any() && previousStages.First().MachineId == machine.Id)
+                        {
+                            rating += 20; // Бонус за использование того же станка
+                        }
+
+                        machineRatings[machine.Id] = rating;
+                    }
+
+                    // Выбираем станок с наилучшим рейтингом
+                    if (machineRatings.Any())
+                    {
+                        var bestMachineId = machineRatings.OrderByDescending(r => r.Value).First().Key;
+
+                        // Если этап уже назначен на станок, но есть лучший вариант, переназначаем
+                        if (!stage.MachineId.HasValue || stage.MachineId.Value != bestMachineId)
+                        {
+                            await _stageService.AssignStageToMachine(stage.Id, bestMachineId);
+                            _logger.LogInformation("Этап {StageId} оптимизирован и назначен на станок {MachineId}", stage.Id, bestMachineId);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при оптимизации очереди");
+            }
+        }
+
+        /// <summary>
+        /// Проверяет конфликты в текущем расписании и пытается их разрешить
+        /// </summary>
+        public async Task ResolveScheduleConflictsAsync()
+        {
+            try
+            {
+                // Получаем список конфликтов
+                var conflicts = await _batchRepo.GetScheduleConflictsAsync();
+                if (!conflicts.Any()) return;
+
+                foreach (var conflict in conflicts)
+                {
+                    _logger.LogWarning("Обнаружен конфликт расписания на станке {MachineName}: {ConflictType}",
+                        conflict.MachineName, conflict.ConflictType);
+
+                    // Пытаемся переназначить этапы с наименьшим приоритетом
+                    var stageToReassign = conflict.ConflictingStages
+                        .OrderBy(s => s.Priority)
+                        .FirstOrDefault();
+
+                    if (stageToReassign != null)
+                    {
+                        // Ищем альтернативный станок
+                        var availableMachines = await _batchRepo.GetAvailableMachinesForStageAsync(stageToReassign.Id);
+                        var alternativeMachine = availableMachines
+                            .Where(m => m.Id != conflict.MachineId)
+                            .OrderByDescending(m => m.Priority)
+                            .FirstOrDefault();
+
+                        if (alternativeMachine != null)
+                        {
+                            // Переназначаем этап на другой станок
+                            await ReassignStageToMachineAsync(stageToReassign.Id, alternativeMachine.Id);
+                            _logger.LogInformation("Этап {StageId} переназначен с {OldMachine} на {NewMachine} для разрешения конфликта",
+                                stageToReassign.Id, conflict.MachineName, alternativeMachine.Name);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при разрешении конфликтов расписания");
+            }
+        }
+
+        /// <summary>
+        /// Предсказывает оптимальное время для запуска производства новой детали
+        /// </summary>
+        public async Task<PredictedScheduleDto> PredictOptimalScheduleForDetailAsync(int detailId, int quantity)
+        {
+            try
+            {
+                // Получаем маршрут для детали
+                var route = await _routeRepo.GetByDetailIdAsync(detailId);
+                if (route == null) throw new Exception($"Маршрут для детали {detailId} не найден");
+
+                // Получаем текущее расписание станков
+                var startDate = DateTime.UtcNow;
+                var endDate = startDate.AddDays(14); // Рассматриваем две недели вперед
+                var machineSchedule = await _batchRepo.GetMachineScheduleAsync(startDate, endDate);
+
+                // Рассчитываем прогноз для каждого этапа маршрута
+                var stageForecasts = new List<StageForecastDto>();
+                DateTime? earliestStartTime = startDate;
+                DateTime? latestEndTime = startDate;
+
+                foreach (var routeStage in route.Stages.OrderBy(s => s.Order))
+                {
+                    // Получаем подходящие станки для этапа
+                    var machineTypeId = routeStage.MachineTypeId;
+                    var machines = await _machineRepo.GetMachinesByTypeAsync(machineTypeId);
+
+                    // Находим оптимальный станок и время для этапа
+                    var bestMachineId = 0;
+                    var bestStartTime = DateTime.MaxValue;
+                    var bestEndTime = DateTime.MaxValue;
+                    var needsSetup = false;
+
+                    foreach (var machine in machines)
+                    {
+                        // Оцениваем, когда станок будет доступен
+                        var machineReleaseTime = await CalculateMachineReleaseTimeAsync(machine.Id);
+
+                        // Проверяем, потребуется ли переналадка
+                        var lastDetailOnMachine = await _setupTimeRepo.GetLastDetailOnMachineAsync(machine.Id);
+                        var setupNeeded = lastDetailOnMachine != null && lastDetailOnMachine.Id != detailId;
+                        var setupTime = setupNeeded ? await _setupTimeRepo.GetSetupTimeAsync(machine.Id, lastDetailOnMachine?.Id ?? 0, detailId) : null;
+
+                        // Рассчитываем время этапа
+                        var setupDuration = setupNeeded ? TimeSpan.FromHours(setupTime?.Time ?? routeStage.SetupTime) : TimeSpan.Zero;
+                        var operationDuration = TimeSpan.FromHours(routeStage.NormTime * quantity);
+
+                        // Начало этапа - максимум из времени освобождения станка и времени завершения предыдущего этапа
+                        var stageStartTime = machineReleaseTime > earliestStartTime ? machineReleaseTime : earliestStartTime.Value;
+
+                        // Окончание этапа - начало + время переналадки + время операции
+                        var stageEndTime = stageStartTime.Add(setupDuration).Add(operationDuration);
+
+                        // Если это лучший вариант, запоминаем его
+                        if (stageEndTime < bestEndTime)
+                        {
+                            bestMachineId = machine.Id;
+                            bestStartTime = stageStartTime;
+                            bestEndTime = stageEndTime;
+                            needsSetup = setupNeeded;
+                        }
+                    }
+
+                    // Добавляем прогноз для этапа
+                    stageForecasts.Add(new StageForecastDto
+                    {
+                        StageOrder = routeStage.Order,
+                        StageName = routeStage.Name,
+                        MachineTypeId = routeStage.MachineTypeId,
+                        MachineTypeName = routeStage.MachineType?.Name,
+                        MachineId = bestMachineId,
+                        MachineName = machines.FirstOrDefault(m => m.Id == bestMachineId)?.Name,
+                        ExpectedStartTime = bestStartTime,
+                        ExpectedEndTime = bestEndTime,
+                        NeedsSetup = needsSetup
+                    });
+
+                    // Обновляем время начала следующего этапа
+                    earliestStartTime = bestEndTime;
+
+                    // Обновляем время завершения всего процесса
+                    if (bestEndTime > latestEndTime)
+                        latestEndTime = bestEndTime;
+                }
+
+                // Возвращаем прогноз
+                return new PredictedScheduleDto
+                {
+                    DetailId = detailId,
+                    Quantity = quantity,
+                    EarliestStartTime = startDate,
+                    LatestEndTime = latestEndTime.Value,
+                    TotalDuration = latestEndTime.Value - startDate,
+                    StageForecasts = stageForecasts
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при предсказании расписания для детали {DetailId}", detailId);
+                throw;
+            }
+        }
     }
 
-    
 }
