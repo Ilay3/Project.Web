@@ -1,0 +1,313 @@
+﻿@model Project.Web.ViewModels.HistoryViewModel
+@{
+    ViewData["Title"] = "История производства";
+}
+
+<div class="container-fluid">
+    <h2>История и отчеты</h2>
+    
+    <!-- Фильтры -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Фильтры</h5>
+        </div>
+        <div class="card-body">
+            <form method="get" id="filter-form">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="startDate" class="form-label">Дата начала</label>
+                        <input type="date" class="form-control" id="startDate" name="startDate" 
+                            value="@(Model.Filter.StartDate?.ToString("yyyy-MM-dd"))">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="endDate" class="form-label">Дата окончания</label>
+                        <input type="date" class="form-control" id="endDate" name="endDate" 
+                            value="@(Model.Filter.EndDate?.ToString("yyyy-MM-dd"))">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="machineId" class="form-label">Станок</label>
+                        <select class="form-select" id="machineId" name="machineId">
+                            <option value="">Все станки</option>
+                            @foreach (var machine in Model.Filter.AvailableMachines)
+                            {
+                                <option value="@machine.Id" @(Model.Filter.MachineId == machine.Id ? "selected" : "")>
+                                    @machine.Name (@machine.InventoryNumber)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="detailId" class="form-label">Деталь</label>
+                        <select class="form-select" id="detailId" name="detailId">
+                            <option value="">Все детали</option>
+                            @foreach (var detail in Model.Filter.AvailableDetails)
+                            {
+                                <option value="@detail.Id" @(Model.Filter.DetailId == detail.Id ? "selected" : "")>
+                                    @detail.Name (@detail.Number)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label for="statusFilter" class="form-label">Статус</label>
+                        <select class="form-select" id="statusFilter" name="statusFilter">
+                            <option value="All" @(Model.Filter.StatusFilter == "All" ? "selected" : "")>Все статусы</option>
+                            <option value="Completed" @(Model.Filter.StatusFilter == "Completed" ? "selected" : "")>Завершено</option>
+                            <option value="InProgress" @(Model.Filter.StatusFilter == "InProgress" ? "selected" : "")>В работе</option>
+                            <option value="Paused" @(Model.Filter.StatusFilter == "Paused" ? "selected" : "")>На паузе</option>
+                            <option value="Waiting" @(Model.Filter.StatusFilter == "Waiting" ? "selected" : "")>В очереди</option>
+                            <option value="Pending" @(Model.Filter.StatusFilter == "Pending" ? "selected" : "")>Ожидание</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="includeSetups" name="includeSetups" 
+                                @(Model.Filter.IncludeSetups ? "checked" : "")>
+                            <label class="form-check-label" for="includeSetups">
+                                Включать этапы переналадки
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                        <button type="button" id="export-csv" class="btn btn-outline-secondary ms-2">Экспорт CSV</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Всего этапов</h5>
+                    <p class="card-text fs-2">@Model.Statistics.TotalStages</p>
+                    <p class="card-text">Завершено: @Model.Statistics.CompletedStages</p>
+                    <p class="card-text">Переналадок: @Model.Statistics.SetupStages</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Рабочее время</h5>
+                    <p class="card-text fs-2">@Model.Statistics.TotalWorkHours ч</p>
+                    <p class="card-text">Производственные операции</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Время переналадки</h5>
+                    <p class="card-text fs-2">@Model.Statistics.TotalSetupHours ч</p>
+                    <p class="card-text">@Math.Round(Model.Statistics.TotalSetupHours / (Model.Statistics.TotalWorkHours + Model.Statistics.TotalSetupHours) * 100, 1)% от общего времени</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-secondary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Время простоя</h5>
+                    <p class="card-text fs-2">@Model.Statistics.TotalIdleHours ч</p>
+                    <p class="card-text">Эффективность: @Model.Statistics.EfficiencyPercentage%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- График -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">График использования станков</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="chart-utilization" height="100"></canvas>
+        </div>
+    </div>
+    
+    <!-- Таблица истории -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">История этапов</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="history-table">
+                    <thead>
+                        <tr>
+                            <th>Деталь</th>
+                            <th>Этап</th>
+                            <th>Станок</th>
+                            <th>Статус</th>
+                            <th>Начало</th>
+                            <th>Завершение</th>
+                            <th>Длительность</th>
+                            <th>Тип</th>
+                            <th>Оператор</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stage in Model.Stages)
+                        {
+                            string statusClass = stage.Status switch
+                            {
+                                "Completed" => "bg-success text-white",
+                                "InProgress" => "bg-primary text-white",
+                                "Paused" => "bg-secondary text-white",
+                                "Waiting" => "bg-warning",
+                                "Pending" => "bg-light",
+                                _ => ""
+                            };
+                            
+                            <tr>
+                                <td>@stage.DetailName</td>
+                                <td>@stage.StageName</td>
+                                <td>@stage.MachineName</td>
+                                <td><span class="badge @statusClass">@GetStatusName(stage.Status)</span></td>
+                                <td>@(stage.StartTime?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+                                <td>@(stage.EndTime?.ToString("dd.MM.yyyy HH:mm") ?? "-")</td>
+                                <td>@(stage.Duration.HasValue ? Math.Round(stage.Duration.Value, 2) + " ч" : "-")</td>
+                                <td>@(stage.IsSetup ? "Переналадка" : "Операция")</td>
+                                <td>@(string.IsNullOrEmpty(stage.OperatorId) ? "-" : stage.OperatorId)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Инициализация графика использования станков
+            initUtilizationChart();
+            
+            // Экспорт в CSV
+            $('#export-csv').on('click', exportToCsv);
+            
+            // Автоматическое обновление при изменении фильтров
+            $('#filter-form select, #filter-form input[type="checkbox"]').on('change', function() {
+                $('#filter-form').submit();
+            });
+        });
+        
+        // Инициализация графика
+        function initUtilizationChart() {
+            const ctx = document.getElementById('chart-utilization').getContext('2d');
+            
+            // Данные для графика
+            const data = {
+                labels: ['Время работы'],
+                datasets: [
+                    {
+                        label: 'Производительное время',
+                        data: [@Model.Statistics.TotalWorkHours],
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                    },
+                    {
+                        label: 'Переналадка',
+                        data: [@Model.Statistics.TotalSetupHours],
+                        backgroundColor: 'rgba(23, 162, 184, 0.7)',
+                    },
+                    {
+                        label: 'Простой',
+                        data: [@Model.Statistics.TotalIdleHours],
+                        backgroundColor: 'rgba(108, 117, 125, 0.7)',
+                    }
+                ]
+            };
+            
+            // Настройки графика
+            const options = {
+                responsive: true,
+                scales: {
+                    x: {
+                        stacked: true,
+                    },
+                    y: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Часы'
+                        }
+                    }
+                }
+            };
+            
+            // Создание графика
+            const myChart = new Chart(ctx, {
+                type: 'bar',
+                data: data,
+                options: options
+            });
+        }
+        
+        // Экспорт данных в CSV
+        function exportToCsv() {
+            const table = document.getElementById('history-table');
+            let csv = [];
+            
+            // Заголовки
+            const headers = [];
+            const headerCells = table.querySelectorAll('thead th');
+            headerCells.forEach(cell => {
+                headers.push(cell.textContent.trim());
+            });
+            csv.push(headers.join(','));
+            
+            // Данные
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const rowData = [];
+                const cells = row.querySelectorAll('td');
+                cells.forEach(cell => {
+                    // Убираем кавычки и экранируем запятые
+                    let text = cell.textContent.trim().replace(/"/g, '""');
+                    if (text.includes(',')) {
+                        text = `"${text}"`;
+                    }
+                    rowData.push(text);
+                });
+                csv.push(rowData.join(','));
+            });
+            
+            // Формируем CSV-файл
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            // Создаем ссылку для скачивания
+            const link = document.createElement('a');
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            link.href = url;
+            link.setAttribute('download', `history_${startDate}_${endDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+}
+
+@functions {
+    string GetStatusName(string status)
+    {
+        return status switch
+        {
+            "Completed" => "Завершено",
+            "InProgress" => "В работе",
+            "Paused" => "На паузе",
+            "Waiting" => "В очереди",
+            "Pending" => "Ожидание",
+            _ => status
+        };
+    }
+}

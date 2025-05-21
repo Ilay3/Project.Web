@@ -25,15 +25,30 @@ namespace Project.Domain.Entities
 
         // true если это переналадка, иначе операция
         public bool IsSetup { get; set; }
+
+        // Позиция в очереди, если этап ожидает
+        public int? QueuePosition { get; set; }
+
+        // Запланированное время начала (для этапов в очереди)
+        public DateTime? ScheduledStartTimeUtc { get; set; }
+
+        // Приоритет этапа (для управления очередью)
+        public int Priority { get; set; } = 0; // 0 - обычный, больше - выше приоритет
+
+        // Идентификатор оператора, выполняющего этап
+        public string? OperatorId { get; set; }
+
+        // Причина паузы или отмены
+        public string? ReasonNote { get; set; }
     }
+
     public enum StageExecutionStatus
     {
-        Pending,    // Ожидание
+        Pending,    // Ожидание (готов к запуску)
         InProgress, // Выполняется
         Paused,     // На паузе
         Completed,  // Завершено
         Waiting,    // В очереди
         Error       // Ошибка
     }
-
 }

@@ -30,6 +30,38 @@ namespace Project.Infrastructure.Repositories
                 .Include(st => st.ToDetail)
                 .FirstOrDefaultAsync(st => st.Id == id);
 
+        public async Task<SetupTime?> GetSetupTimeAsync(int machineId, int fromDetailId, int toDetailId) =>
+            await _db.SetupTimes
+                .Where(st => st.MachineId == machineId &&
+                            st.FromDetailId == fromDetailId &&
+                            st.ToDetailId == toDetailId)
+                .FirstOrDefaultAsync();
+
+        public async Task<Detail?> GetLastDetailOnMachineAsync(int machineId)
+        {
+            // Находим последний завершенный этап на станке
+            var lastStage = await _db.StageExecutions
+                .Where(se => se.MachineId == machineId &&
+                            se.Status == StageExecutionStatus.Completed &&
+                            !se.IsSetup) // только основные операции, не переналадки
+                .OrderByDescending(se => se.EndTimeUtc)
+                .FirstOrDefaultAsync();
+
+            if (lastStage == null)
+                return null;
+
+            // Получаем подпартию этого этапа
+            var subBatch = await _db.SubBatches
+                .Include(sb => sb.Batch)
+                    .ThenInclude(b => b.Detail)
+                .FirstOrDefaultAsync(sb => sb.Id == lastStage.SubBatchId);
+
+            if (subBatch == null)
+                return null;
+
+            return subBatch.Batch.Detail;
+        }
+
         public async Task AddAsync(SetupTime entity)
         {
             _db.SetupTimes.Add(entity);
@@ -52,5 +84,4 @@ namespace Project.Infrastructure.Repositories
             }
         }
     }
-
 }

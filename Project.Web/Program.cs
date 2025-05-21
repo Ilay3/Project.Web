@@ -12,7 +12,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddDbContext<ManufacturingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-
+// Репозитории
 builder.Services.AddScoped<IDetailRepository, DetailRepository>();
 builder.Services.AddScoped<IMachineTypeRepository, MachineTypeRepository>();
 builder.Services.AddScoped<IMachineRepository, MachineRepository>();
@@ -20,11 +20,16 @@ builder.Services.AddScoped<IRouteRepository, RouteRepository>();
 builder.Services.AddScoped<IBatchRepository, BatchRepository>();
 builder.Services.AddScoped<ISetupTimeRepository, SetupTimeRepository>();
 
-
+// Сервисы
 builder.Services.AddScoped<MachineTypeService>();
 builder.Services.AddScoped<DetailService>();
 builder.Services.AddScoped<MachineService>();
-
+builder.Services.AddScoped<RouteService>();
+builder.Services.AddScoped<BatchService>();
+builder.Services.AddScoped<StageExecutionService>();
+builder.Services.AddScoped<SetupTimeService>();
+builder.Services.AddScoped<ProductionSchedulerService>();
+builder.Services.AddScoped<HistoryService>();
 
 var app = builder.Build();
 

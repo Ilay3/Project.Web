@@ -1,8 +1,68 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Система управления производством";
 }
 
 <div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <h1 class="display-4">Система управления производством</h1>
+    <p class="lead">Эффективное планирование и контроль производственных процессов</p>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">Производственное расписание</h5>
+                <p class="card-text">Просмотр и управление текущими заданиями в режиме реального времени</p>
+                <a href="@Url.Action("Index", "Gantt")" class="btn btn-primary">Открыть диаграмму Ганта</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">Управление партиями</h5>
+                <p class="card-text">Создание новых производственных заданий и управление существующими</p>
+                <a href="@Url.Action("Index", "Batch")" class="btn btn-primary">Управление партиями</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">История и отчеты</h5>
+                <p class="card-text">Просмотр истории выполнения этапов и статистика производства</p>
+                <a href="@Url.Action("Index", "History")" class="btn btn-primary">История и отчеты</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">Справочник деталей</h5>
+                <p class="card-text">Управление справочником деталей, производимых на предприятии</p>
+                <a href="@Url.Action("Index", "Detail")" class="btn btn-outline-primary">Управление деталями</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">Управление станками</h5>
+                <p class="card-text">Управление справочником станков и их типов</p>
+                <a href="@Url.Action("Index", "Machine")" class="btn btn-outline-primary">Управление станками</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">Маршруты и переналадки</h5>
+                <p class="card-text">Управление маршрутами деталей и временем переналадки</p>
+                <a href="@Url.Action("Index", "Route")" class="btn btn-outline-primary">Управление маршрутами</a>
+            </div>
+        </div>
+    </div>
 </div>

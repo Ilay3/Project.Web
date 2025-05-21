@@ -11,9 +11,10 @@ namespace Project.Domain.Repositories
     {
         Task<List<Machine>> GetAllAsync();
         Task<Machine?> GetByIdAsync(int id);
+        Task<List<Machine>> GetMachinesByTypeAsync(int machineTypeId);
+        Task<List<Machine>> GetAvailableMachinesAsync(int machineTypeId);
         Task AddAsync(Machine machine);
         Task UpdateAsync(Machine machine);
         Task DeleteAsync(int id);
     }
-
 }

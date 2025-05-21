@@ -11,9 +11,9 @@ namespace Project.Domain.Repositories
     {
         Task<List<Route>> GetAllAsync();
         Task<Route?> GetByIdAsync(int id);
+        Task<Route?> GetByDetailIdAsync(int detailId);
         Task AddAsync(Route entity);
         Task UpdateAsync(Route entity);
         Task DeleteAsync(int id);
     }
-
 }

@@ -1,0 +1,757 @@
+﻿@model Project.Web.ViewModels.GanttViewModel
+@{
+    ViewData["Title"] = "Производственное расписание";
+}
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Производственное расписание</h2>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-primary" id="btn-refresh">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                </button>
+                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#createBatchModal">
+                    <i class="bi bi-plus-lg"></i> Новая партия
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Легенда статусов -->
+        <div class="col-12 mb-3">
+            <div class="d-flex">
+                <div class="me-3">
+                    <span class="badge bg-primary">&nbsp;</span> В работе
+                </div>
+                <div class="me-3">
+                    <span class="badge bg-warning text-dark">&nbsp;</span> В очереди
+                </div>
+                <div class="me-3">
+                    <span class="badge bg-secondary">&nbsp;</span> На паузе
+                </div>
+                <div class="me-3">
+                    <span class="badge bg-success">&nbsp;</span> Завершено
+                </div>
+                <div class="me-3">
+                    <span class="badge bg-info">&nbsp;</span> Переналадка
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Диаграмма Ганта -->
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-body">
+                    <div id="gantt-container" style="height: 600px; overflow-y: auto;">
+                        <div class="gantt-header d-flex border-bottom">
+                            <div style="width: 150px;" class="p-2 border-end">Партия</div>
+                            <div id="gantt-time-header" class="d-flex flex-grow-1">
+                                <!-- Заголовки времени будут генерироваться JS -->
+                            </div>
+                        </div>
+                        <div id="gantt-body">
+                            <!-- Строки диаграммы будут генерироваться JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Панель очереди и управления -->
+        <div class="col-md-3">
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Очередь</h5>
+                </div>
+                <div class="card-body">
+                    <div id="queue-container">
+                        @foreach (var queueItem in Model.QueueItems)
+                        {
+                            <div class="queue-item mb-2 p-2 border rounded">
+                                <div class="d-flex justify-content-between">
+                                    <strong>@queueItem.DetailName</strong>
+                                    <span class="badge bg-warning text-dark">@queueItem.Status</span>
+                                </div>
+                                <div>@queueItem.StageName</div>
+                                <div class="small text-muted">
+                                    Ожидаемый старт: @queueItem.ExpectedStartTime.ToString("HH:mm dd.MM")
+                                </div>
+                                <div class="small">
+                                    Ожидаемый станок: @queueItem.ExpectedMachineName
+                                </div>
+                                <div class="mt-1">
+                                    <button class="btn btn-sm btn-outline-primary prioritize-btn"
+                                            data-stage-id="@queueItem.StageExecutionId"
+                                            data-machine-id="@queueItem.ExpectedMachineId">
+                                        Приоритет
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary reassign-btn"
+                                            data-stage-id="@queueItem.StageExecutionId"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#reassignModal">
+                                        Переназначить
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Станки</h5>
+                </div>
+                <div class="card-body">
+                    <div id="machines-container">
+                        @foreach (var machine in Model.Machines)
+                        {
+                            <div class="machine-item mb-2 p-2 border rounded">
+                                <div class="d-flex justify-content-between">
+                                    <strong>@machine.Name</strong>
+                                    <span id="machine-status-@machine.Id" class="badge bg-success">Свободен</span>
+                                </div>
+                                <div class="small">@machine.InventoryNumber</div>
+                                <div class="small">@machine.MachineTypeName</div>
+                                <div class="small">Приоритет: @machine.Priority</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для создания партии -->
+<div class="modal fade" id="createBatchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать новую партию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="create-batch-form">
+                    <div class="mb-3">
+                        <label for="detail-select" class="form-label">Деталь</label>
+                        <select class="form-select" id="detail-select" required>
+                            <option value="">Выберите деталь...</option>
+                            <!-- Список деталей будет загружен через AJAX -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity-input" class="form-label">Количество</label>
+                        <input type="number" class="form-control" id="quantity-input" min="1" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="split-checkbox">
+                        <label class="form-check-label" for="split-checkbox">Разделить на подпартии</label>
+                    </div>
+                    <div id="subBatches-container" class="d-none">
+                        <div class="mb-3">
+                            <label for="subBatch-count" class="form-label">Количество подпартий</label>
+                            <input type="number" class="form-control" id="subBatch-count" min="2" value="2">
+                        </div>
+                        <div id="subBatch-quantities">
+                            <!-- Здесь будут поля для ввода количества в каждой подпартии -->
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="submit-batch">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для управления этапом -->
+<div class="modal fade" id="stageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Управление этапом</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="stage-info">
+                    <!-- Информация о выбранном этапе -->
+                </div>
+                <div id="stage-actions" class="mt-3">
+                    <!-- Кнопки действий для этапа -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для переназначения этапа -->
+<div class="modal fade" id="reassignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Переназначить этап</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="reassign-form">
+                    <input type="hidden" id="reassign-stage-id">
+                    <div class="mb-3">
+                        <label for="machine-select" class="form-label">Выберите станок</label>
+                        <select class="form-select" id="machine-select" required>
+                            <option value="">Выберите станок...</option>
+                            @foreach (var machine in Model.Machines)
+                            {
+                                <option value="@machine.Id">@machine.Name (@machine.MachineTypeName)</option>
+                            }
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="confirm-reassign">Переназначить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script>
+        // Данные для диаграммы
+        const ganttData = @Json.Serialize(Model.Stages);
+        const machines = @Json.Serialize(Model.Machines);
+        const queueItems = @Json.Serialize(Model.QueueItems);
+
+        // Инициализация при загрузке страницы
+        $(document).ready(function() {
+            // Инициализация диаграммы Ганта
+            initGanttChart();
+
+            // Обработчики событий
+            $('#btn-refresh').on('click', refreshData);
+            $('#split-checkbox').on('change', toggleSubBatchesForm);
+            $('#subBatch-count').on('change', generateSubBatchInputs);
+            $('#submit-batch').on('click', createBatch);
+            $('#confirm-reassign').on('click', confirmReassign);
+
+            // Загрузка списка деталей для формы создания партии
+            loadDetails();
+
+            // Обновление данных каждые 30 секунд
+            setInterval(refreshData, 30000);
+        });
+
+        // Функция инициализации диаграммы Ганта
+        function initGanttChart() {
+            // Рендеринг временных заголовков (по часам)
+            renderTimeHeaders();
+
+            // Рендеринг строк диаграммы
+            renderGanttRows();
+        }
+
+        // Рендеринг временных заголовков
+        function renderTimeHeaders() {
+            const $header = $('#gantt-time-header');
+            $header.empty();
+
+            // Получаем минимальное и максимальное время для отображения
+            const now = moment();
+            const startTime = now.clone().subtract(2, 'hours');
+            const endTime = now.clone().add(10, 'hours');
+
+            // Создаем заголовки по часам
+            let currentTime = startTime.clone();
+            while (currentTime.isBefore(endTime)) {
+                $header.append(`
+                    <div class="p-2 text-center border-end" style="min-width: 100px;">
+                        ${currentTime.format('HH:mm')}
+                    </div>
+                `);
+                currentTime.add(1, 'hour');
+            }
+        }
+
+        // Рендеринг строк диаграммы
+        function renderGanttRows() {
+            const $body = $('#gantt-body');
+            $body.empty();
+
+            // Группируем этапы по партиям
+            const batchGroups = {};
+            ganttData.forEach(stage => {
+                if (!batchGroups[stage.BatchId]) {
+                    batchGroups[stage.BatchId] = {
+                        batchId: stage.BatchId,
+                        detailName: stage.DetailName,
+                        stages: []
+                    };
+                }
+                batchGroups[stage.BatchId].stages.push(stage);
+            });
+
+            // Создаем строки для каждой партии
+            Object.values(batchGroups).forEach(batch => {
+                const $row = $(`
+                    <div class="gantt-row d-flex border-bottom">
+                        <div class="p-2 border-end" style="width: 150px;">
+                            <strong>${batch.detailName}</strong><br>
+                            <small>Партия #${batch.batchId}</small>
+                        </div>
+                        <div class="gantt-row-stages position-relative flex-grow-1">
+                            <!-- Здесь будут блоки этапов -->
+                        </div>
+                    </div>
+                `);
+
+                // Добавляем блоки этапов
+                const $stagesContainer = $row.find('.gantt-row-stages');
+                batch.stages.forEach(stage => {
+                    // Определяем цвет блока по статусу
+                    let bgClass = '';
+                    switch (stage.Status) {
+                        case 'InProgress': bgClass = 'bg-primary'; break;
+                        case 'Waiting': bgClass = 'bg-warning text-dark'; break;
+                        case 'Paused': bgClass = 'bg-secondary'; break;
+                        case 'Completed': bgClass = 'bg-success'; break;
+                        case 'Pending': bgClass = 'bg-light text-dark border'; break;
+                        default: bgClass = 'bg-light text-dark border';
+                    }
+
+                    // Если это переналадка, используем другой цвет
+                    if (stage.IsSetup) {
+                        bgClass = 'bg-info text-dark';
+                    }
+
+                    // Вычисляем позицию и ширину блока
+                    const position = calculateStagePosition(stage);
+                    if (position) {
+                        const $stageBlock = $(`
+                            <div class="position-absolute p-1 rounded ${bgClass}"
+                                 style="left: ${position.left}px; width: ${position.width}px; top: 5px; bottom: 5px;"
+                                 data-stage-id="${stage.Id}">
+                                <div class="small">${stage.StageName}</div>
+                                <div class="small">${stage.MachineName || ''}</div>
+                            </div>
+                        `);
+
+                        // Добавляем обработчик клика для управления этапом
+                        $stageBlock.on('click', function() {
+                            showStageModal(stage);
+                        });
+
+                        $stagesContainer.append($stageBlock);
+                    }
+                });
+
+                $body.append($row);
+            });
+        }
+
+        // Вычисление позиции и ширины блока этапа на диаграмме
+        function calculateStagePosition(stage) {
+            // Получаем базовые временные границы диаграммы
+            const now = moment();
+            const startTime = now.clone().subtract(2, 'hours');
+            const endTime = now.clone().add(10, 'hours');
+            const totalWidth = $('#gantt-time-header').width();
+            const hourWidth = totalWidth / 12; // 12 часов в диаграмме
+
+            // Определяем начало и конец этапа
+            let stageStart, stageEnd;
+
+            if (stage.StartTime) {
+                stageStart = moment(stage.StartTime);
+            } else {
+                // Если этап еще не начался, используем текущее время
+                stageStart = now.clone();
+            }
+
+            if (stage.EndTime) {
+                stageEnd = moment(stage.EndTime);
+            } else if (stage.StartTime) {
+                // Если этап начался, но не закончился, используем плановую длительность
+                const durationHours = stage.PlannedDuration.TotalHours || 1;
+                stageEnd = moment(stage.StartTime).add(durationHours, 'hours');
+
+                // Если плановый конец уже прошел, используем текущее время + 30 минут
+                if (stageEnd.isBefore(now)) {
+                    stageEnd = now.clone().add(30, 'minutes');
+                }
+            } else {
+                // Если этап ещё не начался, показываем блок шириной 1 час
+                stageEnd = stageStart.clone().add(1, 'hour');
+            }
+
+            // Ограничиваем временные границы видимой областью диаграммы
+            if (stageEnd.isBefore(startTime) || stageStart.isAfter(endTime)) {
+                return null; // Этап вне видимой области
+            }
+
+            if (stageStart.isBefore(startTime)) stageStart = startTime.clone();
+            if (stageEnd.isAfter(endTime)) stageEnd = endTime.clone();
+
+            // Вычисляем позицию и ширину
+            const startOffset = stageStart.diff(startTime, 'hours', true);
+            const duration = stageEnd.diff(stageStart, 'hours', true);
+
+            const left = startOffset * hourWidth;
+            const width = Math.max(duration * hourWidth, 50); // Минимальная ширина 50px
+
+            return { left, width };
+        }
+
+        // Отображение модального окна управления этапом
+        function showStageModal(stage) {
+            const $modal = $('#stageModal');
+            const $info = $('#stage-info');
+            const $actions = $('#stage-actions');
+
+            // Заполняем информацию об этапе
+            $info.html(`
+                <div><strong>Деталь:</strong> ${stage.DetailName}</div>
+                <div><strong>Этап:</strong> ${stage.StageName}</div>
+                <div><strong>Станок:</strong> ${stage.MachineName || 'Не назначен'}</div>
+                <div><strong>Статус:</strong> ${translateStatus(stage.Status)}</div>
+                ${stage.StartTime ? `<div><strong>Начало:</strong> ${moment(stage.StartTime).format('DD.MM.YYYY HH:mm')}</div>` : ''}
+                ${stage.EndTime ? `<div><strong>Завершение:</strong> ${moment(stage.EndTime).format('DD.MM.YYYY HH:mm')}</div>` : ''}
+                <div><strong>Тип:</strong> ${stage.IsSetup ? 'Переналадка' : 'Основная операция'}</div>
+            `);
+
+            // Добавляем кнопки действий в зависимости от статуса
+            $actions.empty();
+
+            switch (stage.Status) {
+                case 'Pending':
+                    $actions.append(`
+                        <button class="btn btn-success me-2" data-action="start" data-stage-id="${stage.Id}">
+                            Начать
+                        </button>
+                        <button class="btn btn-secondary me-2" data-action="reassign" data-stage-id="${stage.Id}">
+                            Переназначить
+                        </button>
+                    `);
+                    break;
+                case 'InProgress':
+                    $actions.append(`
+                        <button class="btn btn-warning me-2" data-action="pause" data-stage-id="${stage.Id}">
+                            Пауза
+                        </button>
+                        <button class="btn btn-success" data-action="complete" data-stage-id="${stage.Id}">
+                            Завершить
+                        </button>
+                    `);
+                    break;
+                case 'Paused':
+                    $actions.append(`
+                        <button class="btn btn-primary me-2" data-action="resume" data-stage-id="${stage.Id}">
+                            Возобновить
+                        </button>
+                        <button class="btn btn-secondary" data-action="reassign" data-stage-id="${stage.Id}">
+                            Переназначить
+                        </button>
+                    `);
+                    break;
+                case 'Waiting':
+                    $actions.append(`
+                        <button class="btn btn-primary me-2" data-action="prioritize" data-stage-id="${stage.Id}" data-machine-id="${stage.MachineId}">
+                            Приоритет
+                        </button>
+                        <button class="btn btn-secondary" data-action="reassign" data-stage-id="${stage.Id}">
+                            Переназначить
+                        </button>
+                    `);
+                    break;
+            }
+
+            // Добавляем обработчики событий для кнопок
+            $actions.find('button').on('click', function() {
+                const action = $(this).data('action');
+                const stageId = $(this).data('stage-id');
+                const machineId = $(this).data('machine-id');
+
+                handleStageAction(action, stageId, machineId);
+                $modal.modal('hide');
+            });
+
+            // Отображаем модальное окно
+            $modal.modal('show');
+        }
+
+        // Обработка действий над этапом
+        function handleStageAction(action, stageId, machineId) {
+            switch (action) {
+                case 'start':
+                    $.post('/Gantt/StartStage', { id: stageId }, handleActionResponse);
+                    break;
+                case 'pause':
+                    $.post('/Gantt/PauseStage', { id: stageId }, handleActionResponse);
+                    break;
+                case 'resume':
+                    $.post('/Gantt/ResumeStage', { id: stageId }, handleActionResponse);
+                    break;
+                case 'complete':
+                    $.post('/Gantt/CompleteStage', { id: stageId }, handleActionResponse);
+                    break;
+                case 'reassign':
+                    showReassignModal(stageId);
+                    break;
+                case 'prioritize':
+                    $.post('/Gantt/PrioritizeStage', { stageId, machineId }, handleActionResponse);
+                    break;
+            }
+        }
+
+        // Обработка ответа на действие
+        function handleActionResponse(response) {
+            if (response.success) {
+                refreshData();
+            } else {
+                alert('Ошибка: ' + (response.error || 'Не удалось выполнить действие'));
+            }
+        }
+
+        // Отображение модального окна для переназначения этапа
+        function showReassignModal(stageId) {
+            $('#reassign-stage-id').val(stageId);
+            $('#reassignModal').modal('show');
+        }
+
+        // Подтверждение переназначения этапа
+        function confirmReassign() {
+            const stageId = $('#reassign-stage-id').val();
+            const machineId = $('#machine-select').val();
+
+            if (!machineId) {
+                alert('Выберите станок');
+                return;
+            }
+
+            $.post('/Gantt/ReassignStage', { stageId, machineId }, function(response) {
+                if (response.success) {
+                    $('#reassignModal').modal('hide');
+                    refreshData();
+                } else {
+                    alert('Ошибка: ' + (response.error || 'Не удалось переназначить этап'));
+                }
+            });
+        }
+
+        // Переключение формы подпартий
+        function toggleSubBatchesForm() {
+            const isChecked = $('#split-checkbox').prop('checked');
+            $('#subBatches-container').toggleClass('d-none', !isChecked);
+
+            if (isChecked) {
+                generateSubBatchInputs();
+            }
+        }
+
+        // Генерация полей ввода для подпартий
+        function generateSubBatchInputs() {
+            const count = parseInt($('#subBatch-count').val(), 10);
+            const totalQuantity = parseInt($('#quantity-input').val(), 10) || 0;
+            const $container = $('#subBatch-quantities');
+            $container.empty();
+
+            if (count > 0 && totalQuantity > 0) {
+                // Рассчитываем примерное равное распределение
+                const baseQuantity = Math.floor(totalQuantity / count);
+                const remainder = totalQuantity % count;
+
+                for (let i = 0; i < count; i++) {
+                    // Добавляем остаток к первой подпартии
+                    const defaultQuantity = i === 0 ? baseQuantity + remainder : baseQuantity;
+                    $container.append(`
+                        <div class="mb-2">
+                            <label class="form-label">Подпартия ${i+1}</label>
+                            <input type="number" class="form-control subBatch-quantity"
+                                  min="1" value="${defaultQuantity}" required>
+                        </div>
+                    `);
+                }
+            }
+        }
+
+        // Загрузка списка деталей
+        function loadDetails() {
+            $.getJSON('/Detail/GetDetails', function(data) {
+                const $select = $('#detail-select');
+                $select.empty();
+                $select.append('<option value="">Выберите деталь...</option>');
+
+                data.forEach(detail => {
+                    $select.append(`<option value="${detail.id}">${detail.name} (${detail.number})</option>`);
+                });
+            });
+        }
+
+        // Создание новой партии
+        function createBatch() {
+            const detailId = $('#detail-select').val();
+            const quantity = parseInt($('#quantity-input').val(), 10);
+
+            if (!detailId || !quantity) {
+                alert('Заполните все поля');
+                return;
+            }
+
+            const batchData = {
+                detailId: parseInt(detailId, 10),
+                quantity: quantity,
+                subBatches: []
+            };
+
+            // Если выбрано разделение на подпартии
+            if ($('#split-checkbox').prop('checked')) {
+                $('.subBatch-quantity').each(function() {
+                    const subQuantity = parseInt($(this).val(), 10);
+                    if (subQuantity > 0) {
+                        batchData.subBatches.push({ quantity: subQuantity });
+                    }
+                });
+
+                // Проверяем, что сумма количеств в подпартиях равна общему количеству
+                const sumSubQuantities = batchData.subBatches.reduce((sum, sb) => sum + sb.quantity, 0);
+                if (sumSubQuantities !== quantity) {
+                    alert(`Общее количество в подпартиях (${sumSubQuantities}) не совпадает с указанным количеством (${quantity})`);
+                    return;
+                }
+            }
+
+            // Отправляем запрос на создание партии
+            $.ajax({
+                url: '/Batch/Create',
+                type: 'POST',
+                data: JSON.stringify(batchData),
+                contentType: 'application/json',
+                success: function(response) {
+                    $('#createBatchModal').modal('hide');
+                    refreshData();
+                },
+                error: function(xhr) {
+                    alert('Ошибка: ' + xhr.responseText);
+                }
+            });
+        }
+
+        // Обновление данных диаграммы
+        function refreshData() {
+            $.getJSON('/Gantt/GetGanttData', function(data) {
+                // Обновляем данные
+                ganttData.length = 0;
+                Array.prototype.push.apply(ganttData, data);
+
+                // Перерисовываем диаграмму
+                initGanttChart();
+
+                // Обновляем очередь
+                $.getJSON('/Gantt/GetQueueForecast', function(queueData) {
+                    // Обновляем данные очереди
+                    queueItems.length = 0;
+                    Array.prototype.push.apply(queueItems, queueData);
+
+                    // Перерисовываем очередь
+                    renderQueue();
+
+                    // Обновляем статусы станков
+                    updateMachineStatuses();
+                });
+            });
+        }
+
+        // Рендеринг очереди
+        function renderQueue() {
+            const $container = $('#queue-container');
+            $container.empty();
+
+            queueItems.forEach(item => {
+                const $item = $(`
+                    <div class="queue-item mb-2 p-2 border rounded">
+                        <div class="d-flex justify-content-between">
+                            <strong>${item.DetailName}</strong>
+                            <span class="badge bg-warning text-dark">${translateStatus(item.Status)}</span>
+                        </div>
+                        <div>${item.StageName}</div>
+                        <div class="small text-muted">
+                            Ожидаемый старт: ${moment(item.ExpectedStartTime).format('HH:mm DD.MM')}
+                        </div>
+                        <div class="small">
+                            Ожидаемый станок: ${item.ExpectedMachineName}
+                        </div>
+                        <div class="mt-1">
+                            <button class="btn btn-sm btn-outline-primary prioritize-btn"
+                                    data-stage-id="${item.StageExecutionId}"
+                                    data-machine-id="${item.ExpectedMachineId}">
+                                Приоритет
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary reassign-btn"
+                                    data-stage-id="${item.StageExecutionId}">
+                                Переназначить
+                            </button>
+                        </div>
+                    </div>
+                `);
+
+                // Добавляем обработчики событий
+                $item.find('.prioritize-btn').on('click', function() {
+                    const stageId = $(this).data('stage-id');
+                    const machineId = $(this).data('machine-id');
+                    handleStageAction('prioritize', stageId, machineId);
+                });
+
+                $item.find('.reassign-btn').on('click', function() {
+                    const stageId = $(this).data('stage-id');
+                    showReassignModal(stageId);
+                });
+
+                $container.append($item);
+            });
+
+            // Если очередь пуста
+            if (queueItems.length === 0) {
+                $container.html('<div class="text-muted">Нет этапов в очереди</div>');
+            }
+        }
+
+        // Обновление статусов станков
+        function updateMachineStatuses() {
+            // Сначала отмечаем все станки как свободные
+            machines.forEach(machine => {
+                $(`#machine-status-${machine.Id}`).removeClass('bg-success bg-primary').addClass('bg-success').text('Свободен');
+            });
+
+            // Затем находим занятые станки
+            ganttData.forEach(stage => {
+                if (stage.Status === 'InProgress' && stage.MachineId) {
+                    $(`#machine-status-${stage.MachineId}`).removeClass('bg-success').addClass('bg-primary').text('Занят');
+                }
+            });
+        }
+
+        // Перевод статусов для отображения
+        function translateStatus(status) {
+            switch (status) {
+                case 'InProgress': return 'В работе';
+                case 'Waiting': return 'В очереди';
+                case 'Paused': return 'На паузе';
+                case 'Completed': return 'Завершено';
+                case 'Pending': return 'Готов к запуску';
+                default: return status;
+            }
+        }
+    </script>
+}

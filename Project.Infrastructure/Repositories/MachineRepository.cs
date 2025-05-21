@@ -1,8 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Project.Domain;
 using Project.Domain.Entities;
 using Project.Domain.Repositories;
 using Project.Infrastructure.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Project.Infrastructure.Repositories
 {
@@ -20,6 +23,31 @@ namespace Project.Infrastructure.Repositories
 
         public async Task<Machine?> GetByIdAsync(int id) =>
             await _db.Machines.Include(m => m.MachineType).FirstOrDefaultAsync(m => m.Id == id);
+
+        public async Task<List<Machine>> GetMachinesByTypeAsync(int machineTypeId) =>
+            await _db.Machines
+                .Include(m => m.MachineType)
+                .Where(m => m.MachineTypeId == machineTypeId)
+                .OrderByDescending(m => m.Priority)
+                .ToListAsync();
+
+        public async Task<List<Machine>> GetAvailableMachinesAsync(int machineTypeId)
+        {
+            // Получаем все станки указанного типа
+            var machinesOfType = await GetMachinesByTypeAsync(machineTypeId);
+
+            // Получаем ID станков, на которых сейчас что-то выполняется
+            var busyMachineIds = await _db.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.InProgress)
+                .Select(se => se.MachineId)
+                .Distinct()
+                .ToListAsync();
+
+            // Исключаем занятые станки
+            return machinesOfType
+                .Where(m => !busyMachineIds.Contains(m.Id))
+                .ToList();
+        }
 
         public async Task AddAsync(Machine machine)
         {

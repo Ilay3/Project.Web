@@ -11,9 +11,10 @@ namespace Project.Domain.Repositories
     {
         Task<List<SetupTime>> GetAllAsync();
         Task<SetupTime?> GetByIdAsync(int id);
+        Task<SetupTime?> GetSetupTimeAsync(int machineId, int fromDetailId, int toDetailId);
+        Task<Detail?> GetLastDetailOnMachineAsync(int machineId);
         Task AddAsync(SetupTime entity);
         Task UpdateAsync(SetupTime entity);
         Task DeleteAsync(int id);
     }
-
 }

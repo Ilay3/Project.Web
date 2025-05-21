@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 
 namespace Project.Infrastructure.Repositories
 {
-
     public class RouteRepository : IRouteRepository
     {
         private readonly ManufacturingDbContext _db;
@@ -35,6 +34,13 @@ namespace Project.Infrastructure.Repositories
                     .ThenInclude(s => s.MachineType)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
+        public async Task<Route?> GetByDetailIdAsync(int detailId) =>
+            await _db.Routes
+                .Include(r => r.Detail)
+                .Include(r => r.Stages)
+                    .ThenInclude(s => s.MachineType)
+                .FirstOrDefaultAsync(r => r.DetailId == detailId);
+
         public async Task AddAsync(Route entity)
         {
             _db.Routes.Add(entity);
@@ -57,5 +63,4 @@ namespace Project.Infrastructure.Repositories
             }
         }
     }
-
 }
