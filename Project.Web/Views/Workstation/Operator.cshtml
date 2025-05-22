@@ -1,4 +1,5 @@
-﻿@model OperatorWorkspaceViewModel
+﻿@using Project.Web.ViewModels
+@model OperatorWorkspaceViewModel
 @{
     ViewData["Title"] = "Рабочее место: " + Model.MachineName;
 }
@@ -326,9 +327,9 @@
         
         // Обновление времени выполнения текущего этапа
         function updateElapsedTime() {
-            @if (Model.CurrentStage?.StartTime != null)
+            if (Model.CurrentStage?.StartTime != null)
             {
-                <text>
+               
                 const startTime = new Date('@Model.CurrentStage.StartTime?.ToString("yyyy-MM-ddTHH:mm:ss")');
                 const now = new Date();
                 const elapsedMs = now - startTime;
@@ -362,7 +363,7 @@
                     progressBar.classList.remove('bg-primary', 'bg-warning');
                     progressBar.classList.add('bg-danger');
                 }
-                </text>
+               
             }
         }
         
