@@ -24,6 +24,7 @@ namespace Project.Infrastructure
             services.AddScoped<IRouteRepository, RouteRepository>();
             services.AddScoped<IBatchRepository, BatchRepository>();
             services.AddScoped<ISetupTimeRepository, SetupTimeRepository>();
+            services.AddScoped<IEventRepository, EventRepository>();
 
             return services;
         }

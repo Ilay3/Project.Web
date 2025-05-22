@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Project.Application.BackgroundServices;
 using Project.Application.Services;
+using Project.Domain.Repositories;
 
 namespace Project.Application
 {
@@ -19,6 +20,7 @@ namespace Project.Application
             services.AddScoped<SetupTimeService>();
             services.AddScoped<PlanningService>();
             services.AddScoped<ProductionSchedulerService>();
+            services.AddScoped<EventLogService>();
 
             // Регистрация фоновых служб
             services.AddHostedService<ProductionSchedulerBackgroundService>();
