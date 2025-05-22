@@ -14,6 +14,9 @@ builder.Services.AddControllersWithViews()
 // Добавляем слои приложения
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(opt =>
+        opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
 var app = builder.Build();
 
