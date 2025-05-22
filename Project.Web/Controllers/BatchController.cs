@@ -105,16 +105,50 @@ namespace Project.Web.Controllers
         }
 
         // Создание партии
+        // Создание партии
         [HttpPost]
         public async Task<IActionResult> Create(BatchCreateDto dto)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
             try
             {
-                await _batchService.CreateAsync(dto);
+                // Дополнительная валидация
+                if (dto.DetailId <= 0)
+                {
+                    TempData["ErrorMessage"] = "Не выбрана деталь";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                if (dto.Quantity <= 0)
+                {
+                    TempData["ErrorMessage"] = "Количество должно быть больше 0";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                // Если SubBatches null или пустой, создаем пустой список
+                if (dto.SubBatches == null)
+                {
+                    dto.SubBatches = new List<SubBatchCreateDto>();
+                }
+
+                // Если подпартии не указаны, создается одна подпартия на весь объем
+                if (!dto.SubBatches.Any())
+                {
+                    dto.SubBatches.Add(new SubBatchCreateDto { Quantity = dto.Quantity });
+                }
+                else
+                {
+                    // Проверяем сумму подпартий
+                    var totalSubQuantity = dto.SubBatches.Sum(sb => sb.Quantity);
+                    if (totalSubQuantity != dto.Quantity)
+                    {
+                        TempData["ErrorMessage"] = $"Сумма количеств в подпартиях ({totalSubQuantity}) не равна общему количеству ({dto.Quantity})";
+                        return RedirectToAction(nameof(Index));
+                    }
+                }
+
+                var batchId = await _batchService.CreateAsync(dto);
                 TempData["SuccessMessage"] = "Партия успешно создана";
-                return RedirectToAction(nameof(Index));
+                return RedirectToAction(nameof(Details), new { id = batchId });
             }
             catch (Exception ex)
             {

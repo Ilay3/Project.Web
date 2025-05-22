@@ -57,11 +57,6 @@
                                         <i class="bi bi-graph-up"></i> Планирование
                                     </a>
                                 </li>
-                                <li>
-                                    <a class="dropdown-item" asp-controller="History" asp-action="Index">
-                                        <i class="bi bi-clock-history"></i> История
-                                    </a>
-                                </li>
                             </ul>
                         </li>
 
@@ -98,13 +93,6 @@
                                     </a>
                                 </li>
                             </ul>
-                        </li>
-
-                        <!-- Рабочие места -->
-                        <li class="nav-item">
-                            <a class="nav-link" asp-controller="OperatorWorkspace" asp-action="Index">
-                                <i class="bi bi-person-workspace"></i> Рабочие места
-                            </a>
                         </li>
                     </ul>
 
@@ -171,9 +159,18 @@
     @await RenderSectionAsync("Scripts", required: false)
 
     <script>
+        // Проверяем загрузку jQuery
+        if (typeof jQuery === 'undefined') {
+            console.error('jQuery не загружен!');
+        } else {
+            console.log('jQuery загружен успешно');
+        }
+
         // Глобальные функции для быстрых действий
         function quickCreateBatch() {
-            window.location.href = '/Main/Index#batches-pane';
+            if (typeof $ !== 'undefined') {
+                window.location.href = '/Main/Index#batches-pane';
+            }
         }
 
         function showActiveStages() {
@@ -189,20 +186,19 @@
         }
 
         function showNotifications() {
-            // Здесь можно добавить логику уведомлений
             alert('Функция уведомлений будет добавлена в следующей версии');
         }
 
-        // Обновление счетчика уведомлений
+        // Инициализация при загрузке страницы
         $(document).ready(function() {
             updateNotificationCount();
             setInterval(updateNotificationCount, 60000); // каждую минуту
         });
 
         function updateNotificationCount() {
-            // Здесь можно добавить запрос к API для получения количества уведомлений
             $('#notification-count').text('0');
         }
     </script>
+
 </body>
 </html>
