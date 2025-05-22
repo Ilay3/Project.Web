@@ -24,6 +24,18 @@ namespace Project.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // Настройка для PostgreSQL - все DateTime автоматически в UTC
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
+                    {
+                        property.SetColumnType("timestamp with time zone");
+                    }
+                }
+            }
+
             // Настройка Detail
             modelBuilder.Entity<Detail>()
                 .HasIndex(d => d.Number)
@@ -72,6 +84,12 @@ namespace Project.Infrastructure.Data
                 .HasForeignKey(b => b.DetailId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<Batch>()
+                .Property(b => b.CreatedUtc)
+                .HasConversion(
+                    v => v.ToUniversalTime(),
+                    v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
             // Настройка SubBatch
             modelBuilder.Entity<SubBatch>()
                 .HasOne(sb => sb.Batch)
@@ -98,6 +116,30 @@ namespace Project.Infrastructure.Data
                 .HasForeignKey(se => se.MachineId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Конверсия DateTime для StageExecution
+            var stageExecutionProperties = new[] {
+                nameof(StageExecution.StartTimeUtc),
+                nameof(StageExecution.EndTimeUtc),
+                nameof(StageExecution.PauseTimeUtc),
+                nameof(StageExecution.ResumeTimeUtc),
+                nameof(StageExecution.ScheduledStartTimeUtc),
+                nameof(StageExecution.StatusChangedTimeUtc)
+            };
+
+            modelBuilder.Entity<StageExecution>().Property(x => x.StartTimeUtc)
+    .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+            modelBuilder.Entity<StageExecution>().Property(x => x.EndTimeUtc)
+                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+            modelBuilder.Entity<StageExecution>().Property(x => x.PauseTimeUtc)
+                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+            modelBuilder.Entity<StageExecution>().Property(x => x.ResumeTimeUtc)
+                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+            modelBuilder.Entity<StageExecution>().Property(x => x.ScheduledStartTimeUtc)
+                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+            modelBuilder.Entity<StageExecution>().Property(x => x.StatusChangedTimeUtc)
+                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
+
+
             // Настройка SetupTime
             modelBuilder.Entity<SetupTime>()
                 .HasOne(st => st.Machine)
@@ -122,7 +164,7 @@ namespace Project.Infrastructure.Data
                 .HasIndex(st => new { st.MachineId, st.FromDetailId, st.ToDetailId })
                 .IsUnique();
 
-            // Создание индекса для ускорения запросов по статусу и периоду
+            // Создание индексов для ускорения запросов
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.Status);
 
@@ -138,23 +180,18 @@ namespace Project.Infrastructure.Data
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.SubBatchId);
 
-            // Индекс для планирования и очереди
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.ScheduledStartTimeUtc);
 
-            // Индекс для поиска обработанных этапов
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.IsProcessedByScheduler);
 
-            // Индекс для поиска по времени изменения статуса
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.StatusChangedTimeUtc);
 
-            // Составной индекс для поиска этапов в очереди по станку
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => new { se.MachineId, se.Status, se.QueuePosition });
 
-            // Составной индекс для поиска по приоритету
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => new { se.Status, se.Priority, se.ScheduledStartTimeUtc });
 
@@ -174,7 +211,43 @@ namespace Project.Infrastructure.Data
             modelBuilder.Entity<StageExecution>()
                 .Property(se => se.DeviceId)
                 .HasMaxLength(100);
+        }
 
+        public override int SaveChanges()
+        {
+            UpdateTimestamps();
+            return base.SaveChanges();
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            UpdateTimestamps();
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        private void UpdateTimestamps()
+        {
+            var entries = ChangeTracker.Entries()
+                .Where(e => e.Entity is StageExecution &&
+                           (e.State == EntityState.Added || e.State == EntityState.Modified));
+
+            foreach (var entry in entries)
+            {
+                var stageExecution = (StageExecution)entry.Entity;
+
+                if (entry.State == EntityState.Added)
+                {
+                    if (!stageExecution.StatusChangedTimeUtc.HasValue)
+                        stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    if (entry.Property(nameof(StageExecution.Status)).IsModified)
+                    {
+                        stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
+                    }
+                }
+            }
         }
     }
 }
