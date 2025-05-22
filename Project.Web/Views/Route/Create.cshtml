@@ -1,0 +1,215 @@
+﻿@model RouteCreateDto
+@{
+    ViewData["Title"] = "Создание маршрута";
+    var details = ViewBag.Details as List<DetailDto>;
+    var machineTypes = ViewBag.MachineTypes as List<MachineTypeDto>;
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Создание маршрута изготовления</h2>
+        </div>
+        <div class="col-auto">
+            <a href="@Url.Action("Index")" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> К списку
+            </a>
+        </div>
+    </div>
+
+    <form method="post" id="route-form">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Основная информация</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="DetailId" class="form-label">Деталь</label>
+                            <select asp-for="DetailId" class="form-select" required>
+                                <option value="">Выберите деталь...</option>
+                                @if (details != null)
+                                {
+                                    @foreach (var detail in details)
+                                    {
+                                        <option value="@detail.Id">@detail.Name (@detail.Number)</option>
+                                    }
+                                }
+                            </select>
+                            <span asp-validation-for="DetailId" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Этапы маршрута</h5>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="addStage()">
+                            <i class="bi bi-plus"></i> Добавить этап
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="stages-container">
+                            <!-- Этапы будут добавлены динамически -->
+                        </div>
+                        <div id="empty-message" class="text-center p-4">
+                            <i class="bi bi-diagram-3" style="font-size: 3rem;"></i>
+                            <p class="mt-3">Добавьте этапы в маршрут</p>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-lg"></i> Создать маршрут
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Шаблоны этапов</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group">
+                            <button type="button" class="list-group-item list-group-item-action"
+                                    onclick="addStageFromTemplate('Токарная обработка', 1, 0.5)">
+                                <strong>Токарная обработка</strong>
+                                <div class="small">1 ч/деталь, 0.5 ч переналадка</div>
+                            </button>
+                            <button type="button" class="list-group-item list-group-item-action"
+                                    onclick="addStageFromTemplate('Фрезерная обработка', 1.5, 0.7)">
+                                <strong>Фрезерная обработка</strong>
+                                <div class="small">1.5 ч/деталь, 0.7 ч переналадка</div>
+                            </button>
+                            <button type="button" class="list-group-item list-group-item-action"
+                                    onclick="addStageFromTemplate('Сверление', 0.3, 0.2)">
+                                <strong>Сверление</strong>
+                                <div class="small">0.3 ч/деталь, 0.2 ч переналадка</div>
+                            </button>
+                            <button type="button" class="list-group-item list-group-item-action"
+                                    onclick="addStageFromTemplate('Контроль ОТК', 0.1, 0.1)">
+                                <strong>Контроль ОТК</strong>
+                                <div class="small">0.1 ч/деталь, 0.1 ч переналадка</div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        let stageIndex = 0;
+        const machineTypes = @Html.Raw(Json.Serialize(machineTypes ?? new List<MachineTypeDto>()));
+
+        function addStage() {
+            const container = $('#stages-container');
+            const stage = createStageElement(stageIndex++, '', 1, '', 1.0, 0.5, 'Основная');
+            container.append(stage);
+            $('#empty-message').hide();
+            updateStageNumbers();
+        }
+
+        function addStageFromTemplate(name, normTime, setupTime) {
+            const container = $('#stages-container');
+            const stage = createStageElement(stageIndex++, name, 1, '', normTime, setupTime, 'Основная');
+            container.append(stage);
+            $('#empty-message').hide();
+            updateStageNumbers();
+        }
+
+        function createStageElement(index, name, order, machineTypeId, normTime, setupTime, stageType) {
+            let machineTypeOptions = '<option value="">Выберите тип станка...</option>';
+            machineTypes.forEach(mt => {
+                const selected = mt.id == machineTypeId ? 'selected' : '';
+                machineTypeOptions += `<option value="${mt.id}" ${selected}>${mt.name}</option>`;
+            });
+
+            return `
+                <div class="stage-item mb-3 p-3 border rounded" data-index="${index}">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">Этап <span class="stage-number">${order}</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeStage(this)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <input type="hidden" name="Stages[${index}].Order" value="${order}" class="stage-order">
+                            <div class="mb-3">
+                                <label class="form-label">Название операции</label>
+                                <input type="text" name="Stages[${index}].Name" class="form-control" value="${name}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Тип станка</label>
+                                <select name="Stages[${index}].MachineTypeId" class="form-select" required>
+                                    ${machineTypeOptions}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Время на деталь (ч)</label>
+                                <input type="number" name="Stages[${index}].NormTime" class="form-control"
+                                       value="${normTime}" step="0.01" min="0" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Время переналадки (ч)</label>
+                                <input type="number" name="Stages[${index}].SetupTime" class="form-control"
+                                       value="${setupTime}" step="0.01" min="0" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип этапа</label>
+                        <select name="Stages[${index}].StageType" class="form-select">
+                            <option value="Основная" ${stageType === 'Основная' ? 'selected' : ''}>Основная операция</option>
+                            <option value="Контрольная" ${stageType === 'Контрольная' ? 'selected' : ''}>Контрольная операция</option>
+                            <option value="Вспомогательная" ${stageType === 'Вспомогательная' ? 'selected' : ''}>Вспомогательная операция</option>
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        function removeStage(button) {
+            $(button).closest('.stage-item').remove();
+            updateStageNumbers();
+            if ($('.stage-item').length === 0) {
+                $('#empty-message').show();
+            }
+        }
+
+        function updateStageNumbers() {
+            $('.stage-item').each(function(index) {
+                $(this).find('.stage-number').text(index + 1);
+                $(this).find('.stage-order').val(index + 1);
+
+                // Обновляем имена полей
+                $(this).find('input, select').each(function() {
+                    const name = $(this).attr('name');
+                    if (name) {
+                        const newName = name.replace(/Stages\[\d+\]/, `Stages[${index}]`);
+                        $(this).attr('name', newName);
+                    }
+                });
+            });
+        }
+
+        $(document).ready(function() {
+            // Валидация формы
+            $('#route-form').on('submit', function(e) {
+                if ($('.stage-item').length === 0) {
+                    alert('Добавьте хотя бы один этап в маршрут');
+                    e.preventDefault();
+                    return false;
+                }
+                return true;
+            });
+        });
+    </script>
+}

@@ -7,6 +7,6 @@
         public string InventoryNumber { get; set; }
         public string MachineTypeName { get; set; }
         public int Priority { get; set; }
+        public int MachineTypeId { get; set; }
     }
-
 }

@@ -1,0 +1,350 @@
+﻿@model List<SetupTimeViewModel>
+@{
+    ViewData["Title"] = "Времена переналадки";
+    var machines = ViewBag.Machines as List<MachineDto>;
+    var details = ViewBag.Details as List<DetailDto>;
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Времена переналадки</h2>
+            <p class="lead">Справочник времен переналадки станков при смене деталей</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+                    <i class="bi bi-plus"></i> Добавить время
+                </button>
+                <button class="btn btn-outline-success" onclick="showBulkImport()">
+                    <i class="bi bi-upload"></i> Массовый импорт
+                </button>
+                <a href="@Url.Action("Index", "Machine")" class="btn btn-outline-secondary">
+                    <i class="bi bi-tools"></i> Станки
+                </a>
+                <a href="@Url.Action("Index", "Main")" class="btn btn-outline-primary">
+                    <i class="bi bi-house"></i> Главная
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Справочник времен переналадки</h5>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" onclick="filterByMachine()">
+                            <i class="bi bi-funnel"></i> По станку
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="showMatrix()">
+                            <i class="bi bi-grid-3x3"></i> Матрица
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="setup-times-table">
+                            <thead>
+                                <tr>
+                                    <th>Станок</th>
+                                    <th>С детали</th>
+                                    <th>На деталь</th>
+                                    <th>Время (ч)</th>
+                                    <th>Время (мин)</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var setupTime in Model)
+                                {
+                                    var minutes = Math.Round(setupTime.Time * 60, 0);
+                                    <tr>
+                                        <td>
+                                            <i class="bi bi-tools text-primary me-1"></i>
+                                            <strong>@setupTime.MachineName</strong>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">@setupTime.FromDetailName</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">@setupTime.ToDetailName</span>
+                                        </td>
+                                        <td>
+                                            <strong>@setupTime.Time</strong>
+                                        </td>
+                                        <td>
+                                            <span class="text-muted">@minutes мин</span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-outline-primary edit-btn"
+                                                        data-id="@setupTime.Id"
+                                                        data-bs-toggle="modal" data-bs-target="#editModal">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger delete-btn"
+                                                        data-id="@setupTime.Id"
+                                                        data-from="@setupTime.FromDetailName"
+                                                        data-to="@setupTime.ToDetailName"
+                                                        data-machine="@setupTime.MachineName"
+                                                        data-bs-toggle="modal" data-bs-target="#deleteModal">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Быстрые шаблоны</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="addQuickTime(0.25)">
+                            <i class="bi bi-clock"></i> 15 минут
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="addQuickTime(0.5)">
+                            <i class="bi bi-clock"></i> 30 минут
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="addQuickTime(1.0)">
+                            <i class="bi bi-clock"></i> 1 час
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="addQuickTime(2.0)">
+                            <i class="bi bi-clock"></i> 2 часа
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Статистика</h6>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <h4 class="text-primary">@Model.Count</h4>
+                        <small class="text-muted">Записей в справочнике</small>
+                    </div>
+                    @if (Model.Any())
+                    {
+                        var avgTime = Model.Average(s => s.Time);
+                        var minTime = Model.Min(s => s.Time);
+                        var maxTime = Model.Max(s => s.Time);
+
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="text-success">@Math.Round(minTime, 2)</div>
+                                <small class="text-muted">Мин</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-info">@Math.Round(avgTime, 2)</div>
+                                <small class="text-muted">Среднее</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-warning">@Math.Round(maxTime, 2)</div>
+                                <small class="text-muted">Макс</small>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить время переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="@Url.Action("Create")">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Станок</label>
+                                <select name="MachineId" class="form-select" required>
+                                    <option value="">Выберите станок...</option>
+                                    @if (machines != null)
+                                    {
+                                        @foreach (var machine in machines)
+                                        {
+                                            <option value="@machine.Id">@machine.Name (@machine.InventoryNumber)</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">С детали</label>
+                                <select name="FromDetailId" class="form-select" required>
+                                    <option value="">Выберите деталь...</option>
+                                    @if (details != null)
+                                    {
+                                        @foreach (var detail in details)
+                                        {
+                                            <option value="@detail.Id">@detail.Name (@detail.Number)</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">На деталь</label>
+                                <select name="ToDetailId" class="form-select" required>
+                                    <option value="">Выберите деталь...</option>
+                                    @if (details != null)
+                                    {
+                                        @foreach (var detail in details)
+                                        {
+                                            <option value="@detail.Id">@detail.Name (@detail.Number)</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Время переналадки</label>
+                                <div class="input-group">
+                                    <input type="number" name="Time" id="setup-time-input"
+                                           class="form-control" step="0.01" min="0" required>
+                                    <span class="input-group-text">часов</span>
+                                </div>
+                                <div class="form-text">
+                                    Примеры: 0.25 = 15 мин, 0.5 = 30 мин, 1.0 = 1 час
+                                </div>
+                            </div>
+                            <div class="alert alert-info">
+                                <h6>Подсказка:</h6>
+                                <small>
+                                    • Простая переналадка: 0.1-0.3 ч<br>
+                                    • Средняя переналадка: 0.5-1.0 ч<br>
+                                    • Сложная переналадка: 1.5-3.0 ч
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать время переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="edit-form" method="post">
+                <div class="modal-body">
+                    <input type="hidden" id="edit-id" name="Id">
+                    <div class="mb-3">
+                        <label class="form-label">Время переналадки</label>
+                        <div class="input-group">
+                            <input type="number" id="edit-time" name="Time"
+                                   class="form-control" step="0.01" min="0" required>
+                            <span class="input-group-text">часов</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно удаления -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Удаление времени переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Удалить время переналадки:</p>
+                <div class="alert alert-light">
+                    <strong>Станок:</strong> <span id="delete-machine"></span><br>
+                    <strong>Переналадка:</strong> <span id="delete-from"></span> → <span id="delete-to"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form id="delete-form" method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            $('#setup-times-table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                },
+                "order": [[ 0, "asc" ], [ 1, "asc" ]]
+            });
+
+            $('.edit-btn').click(function() {
+                const id = $(this).data('id');
+                // Загрузка данных через AJAX
+                $.get(`@Url.Action("GetById")/${id}`, function(data) {
+                    $('#edit-id').val(data.id);
+                    $('#edit-time').val(data.time);
+                    $('#edit-form').attr('action', '@Url.Action("Edit")');
+                });
+            });
+
+            $('.delete-btn').click(function() {
+                $('#delete-machine').text($(this).data('machine'));
+                $('#delete-from').text($(this).data('from'));
+                $('#delete-to').text($(this).data('to'));
+                $('#delete-form').attr('action', '@Url.Action("Delete")/' + $(this).data('id'));
+            });
+        });
+
+        function addQuickTime(time) {
+            $('#setup-time-input').val(time);
+            $('#createModal').modal('show');
+        }
+
+        function showBulkImport() {
+            alert('Функция массового импорта будет добавлена в следующей версии');
+        }
+
+        function filterByMachine() {
+            // Реализация фильтрации по станку
+            const table = $('#setup-times-table').DataTable();
+            // Добавить логику фильтрации
+        }
+
+        function showMatrix() {
+            alert('Матричный вид будет добавлен в следующей версии');
+        }
+    </script>
+}

@@ -1,0 +1,239 @@
+﻿@model List<MachineViewModel>
+@{
+    ViewData["Title"] = "Станки";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Станки</h2>
+            <p class="lead">Управление производственными станками</p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+                    <i class="bi bi-plus"></i> Добавить станок
+                </button>
+                <a href="@Url.Action("Index", "MachineType")" class="btn btn-outline-secondary">
+                    <i class="bi bi-gear"></i> Типы станков
+                </a>
+                <a href="@Url.Action("Index", "Main")" class="btn btn-outline-primary">
+                    <i class="bi bi-house"></i> Главная
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="machines-table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Инвентарный номер</th>
+                            <th>Тип станка</th>
+                            <th>Приоритет</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var machine in Model)
+                        {
+                                <tr>
+                                    <td><strong>@machine.Name</strong></td>
+                                    <td>@machine.InventoryNumber</td>
+                                    <td>
+                                        <span class="badge bg-secondary">@machine.MachineTypeName</span>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 60px; height: 20px;">
+                                            <div class="progress-bar" style="width: @machine.Priority%">@machine.Priority</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success machine-status" data-machine-id="@machine.Id">Загрузка...</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary edit-btn" 
+                                                    data-id="@machine.Id" data-name="@machine.Name" 
+                                                    data-inventory="@machine.InventoryNumber" 
+                                                    data-type="@machine.MachineTypeId" data-priority="@machine.Priority"
+                                                    data-bs-toggle="modal" data-bs-target="#editModal">
+                                                <i class="bi bi-pencil"></i> Изменить
+                                            </button>
+                                            <a href="/OperatorWorkspace?machineId=@machine.Id" class="btn btn-sm btn-outline-success">
+                                                <i class="bi bi-tools"></i> Рабочее место
+                                            </a>
+                                            <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                                    data-id="@machine.Id" data-name="@machine.Name"
+                                                    data-bs-toggle="modal" data-bs-target="#deleteModal">
+                                                <i class="bi bi-trash"></i> Удалить
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить станок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="@Url.Action("Create")">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название станка</label>
+                        <input type="text" name="Name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Инвентарный номер</label>
+                        <input type="text" name="InventoryNumber" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип станка</label>
+                        <select name="MachineTypeId" class="form-select" required>
+                            <option value="">Выберите тип...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет (0-100)</label>
+                        <input type="number" name="Priority" class="form-control" min="0" max="100" value="50">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать станок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="edit-form" method="post">
+                <div class="modal-body">
+                    <input type="hidden" id="edit-id" name="Id">
+                    <div class="mb-3">
+                        <label class="form-label">Название станка</label>
+                        <input type="text" id="edit-name" name="Name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Инвентарный номер</label>
+                        <input type="text" id="edit-inventory" name="InventoryNumber" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип станка</label>
+                        <select id="edit-type" name="MachineTypeId" class="form-select" required>
+                            <option value="">Выберите тип...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет (0-100)</label>
+                        <input type="number" id="edit-priority" name="Priority" class="form-control" min="0" max="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно удаления -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Удаление станка</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Удалить станок <strong id="delete-name"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form id="delete-form" method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+        <script>
+            $(document).ready(function() {
+                $('#machines-table').DataTable({
+                    "language": {
+                        "url": "//cdn.datatables.net/plug-ins/1.10.25/i18n/Russian.json"
+                    }
+                });
+
+                loadMachineTypes();
+                loadMachineStatuses();
+
+                $('.edit-btn').click(function() {
+                    $('#edit-id').val($(this).data('id'));
+                    $('#edit-name').val($(this).data('name'));
+                    $('#edit-inventory').val($(this).data('inventory'));
+                    $('#edit-type').val($(this).data('type'));
+                    $('#edit-priority').val($(this).data('priority'));
+                    $('#edit-form').attr('action', '@Url.Action("Edit")');
+                });
+
+                $('.delete-btn').click(function() {
+                    $('#delete-name').text($(this).data('name'));
+                    $('#delete-form').attr('action', '@Url.Action("Delete")/' + $(this).data('id'));
+                });
+            });
+
+            function loadMachineTypes() {
+                $.get('/api/machinetypes', function(data) {
+                    const selects = $('select[name="MachineTypeId"]');
+                    selects.empty().append('<option value="">Выберите тип...</option>');
+                    data.forEach(type => {
+                        selects.append(`<option value="${type.id}">${type.name}</option>`);
+                    });
+                });
+            }
+
+            function loadMachineStatuses() {
+                $.get('/api/gantt/stages', function(data) {
+                    $('.machine-status').each(function() {
+                        const machineId = $(this).data('machine-id');
+                        const currentStage = data.find(s => s.machineId === machineId && s.status === 'InProgress');
+
+                        if (currentStage) {
+                            $(this).removeClass('bg-success').addClass(currentStage.isSetup ? 'bg-info' : 'bg-primary')
+                                   .text(currentStage.isSetup ? 'Переналадка' : 'В работе');
+                        } else {
+                            $(this).removeClass().addClass('badge bg-success').text('Свободен');
+                        }
+                    });
+                });
+            }
+
+            setInterval(loadMachineStatuses, 30000);
+        </script>
+}
