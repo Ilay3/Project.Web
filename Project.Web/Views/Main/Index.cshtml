@@ -1,7 +1,12 @@
-﻿@using Project.Web.ViewModels
+﻿@* Обновить Project.Web/Views/Main/Index.cshtml *@
+@using Project.Web.ViewModels
 @model MainDashboardViewModel
 @{
     ViewData["Title"] = "Система управления производством";
+}
+
+@section Styles {
+    <link href="~/css/gantt-chart.css" rel="stylesheet" />
 }
 
 <div class="container-fluid">
@@ -19,6 +24,18 @@
                 <button type="button" class="btn btn-outline-primary" id="refreshDataBtn">
                     <i class="bi bi-arrow-clockwise"></i> Обновить
                 </button>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="bi bi-lightning"></i> Быстрые действия
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="optimizeAllQueues()"><i class="bi bi-gear"></i> Оптимизировать очереди</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="autoStartPendingStages()"><i class="bi bi-play"></i> Запустить готовые этапы</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="resolveConflicts()"><i class="bi bi-exclamation-triangle"></i> Разрешить конфликты</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/Planning/Create"><i class="bi bi-calendar-plus"></i> Создать план производства</a></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -31,7 +48,7 @@
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4 class="card-title" id="total-batches">@Model.Batches.Count</h4>
-                            <p class="card-text">Всего партий</p>
+                            <p class="card-text">Активных партий</p>
                         </div>
                         <div class="align-self-center">
                             <i class="bi bi-box-seam" style="font-size: 2rem;"></i>
@@ -45,11 +62,11 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <h4 class="card-title" id="total-details">@Model.Details.Count</h4>
-                            <p class="card-text">Типов деталей</p>
+                            <h4 class="card-title" id="working-machines">0</h4>
+                            <p class="card-text">Станков в работе</p>
                         </div>
                         <div class="align-self-center">
-                            <i class="bi bi-gear" style="font-size: 2rem;"></i>
+                            <i class="bi bi-tools" style="font-size: 2rem;"></i>
                         </div>
                     </div>
                 </div>
@@ -60,11 +77,11 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <h4 class="card-title" id="total-machines">@Model.Machines.Count</h4>
-                            <p class="card-text">Станков</p>
+                            <h4 class="card-title" id="active-stages">0</h4>
+                            <p class="card-text">Этапов в работе</p>
                         </div>
                         <div class="align-self-center">
-                            <i class="bi bi-tools" style="font-size: 2rem;"></i>
+                            <i class="bi bi-play-circle" style="font-size: 2rem;"></i>
                         </div>
                     </div>
                 </div>
@@ -118,12 +135,28 @@
                 </li>
             </ul>
         </div>
-        <div class="card-body">
+        <div class="card-body p-0">
             <div class="tab-content" id="mainTabsContent">
 
                 <!-- Диаграмма Ганта -->
                 <div class="tab-pane fade show active" id="gantt-pane" role="tabpanel">
-                    <div id="gantt-container" style="height: 600px; overflow: auto; border: 1px solid #dee2e6;">
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Производственное расписание</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" onclick="refreshGanttData()" title="Обновить">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="showGanttLegend()" title="Легенда">
+                                    <i class="bi bi-info-circle"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-success" onclick="autoOptimizeSchedule()" title="Автооптимизация">
+                                    <i class="bi bi-magic"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-container" style="min-height: 500px;">
                         <div class="text-center p-5">
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">Загрузка...</span>
@@ -135,7 +168,20 @@
 
                 <!-- Очередь -->
                 <div class="tab-pane fade" id="queue-pane" role="tabpanel">
-                    <div id="queue-container">
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Очередь этапов</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" onclick="refreshQueueData()">
+                                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                                </button>
+                                <button type="button" class="btn btn-outline-success" onclick="optimizeAllQueues()">
+                                    <i class="bi bi-gear"></i> Оптимизировать
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="queue-container" class="p-3">
                         <div class="text-center p-5">
                             <i class="bi bi-clock-history" style="font-size: 3rem; color: #6c757d;"></i>
                             <h4 class="mt-3">Очередь этапов</h4>
@@ -146,73 +192,108 @@
 
                 <!-- Партии -->
                 <div class="tab-pane fade" id="batches-pane" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5>Производственные партии</h5>
-                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createBatchModal">
-                            <i class="bi bi-plus"></i> Создать партию
-                        </button>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-hover" id="batches-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Деталь</th>
-                                    <th>Количество</th>
-                                    <th>Создана</th>
-                                    <th>Статус</th>
-                                    <th>Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Данные загружаются через JS -->
-                            </tbody>
-                        </table>
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Производственные партии</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBatchModal">
+                                    <i class="bi bi-plus"></i> Создать партию
+                                </button>
+                                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#quickBatchModal">
+                                    <i class="bi bi-lightning"></i> Быстрое создание
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="batches-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Деталь</th>
+                                        <th>Количество</th>
+                                        <th>Создана</th>
+                                        <th>Прогресс</th>
+                                        <th>Статус</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Данные загружаются через JS -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Станки -->
                 <div class="tab-pane fade" id="machines-pane" role="tabpanel">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5>Станки</h5>
-                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#machineModal">
-                            <i class="bi bi-plus"></i> Добавить станок
-                        </button>
-                    </div>
-                    <div id="machines-container">
-                        <!-- Станки загружаются через JS -->
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Станки</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#machineModal">
+                                    <i class="bi bi-plus"></i> Добавить станок
+                                </button>
+                                <button type="button" class="btn btn-outline-info" onclick="showMachineStatistics()">
+                                    <i class="bi bi-bar-chart"></i> Статистика
+                                </button>
+                            </div>
+                        </div>
+                        <div id="machines-container">
+                            <!-- Станки загружаются через JS -->
+                        </div>
                     </div>
                 </div>
 
                 <!-- Справочники -->
                 <div class="tab-pane fade" id="references-pane" role="tabpanel">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="card h-100">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h6 class="mb-0">Детали</h6>
-                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#detailModal">
-                                        <i class="bi bi-plus"></i> Добавить
-                                    </button>
+                    <div class="p-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Детали</h6>
+                                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#detailModal">
+                                            <i class="bi bi-plus"></i> Добавить
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="details-container" style="max-height: 400px; overflow-y: auto;">
+                                            <!-- Детали загружаются через JS -->
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="card-body">
-                                    <div id="details-container" style="max-height: 400px; overflow-y: auto;">
-                                        <!-- Детали загружаются через JS -->
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Типы станков</h6>
+                                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#machineTypeModal">
+                                            <i class="bi bi-plus"></i> Добавить
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="machine-types-container" style="max-height: 400px; overflow-y: auto;">
+                                            <!-- Типы станков загружаются через JS -->
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="card h-100">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h6 class="mb-0">Типы станков</h6>
-                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#machineTypeModal">
-                                        <i class="bi bi-plus"></i> Добавить
-                                    </button>
-                                </div>
-                                <div class="card-body">
-                                    <div id="machine-types-container" style="max-height: 400px; overflow-y: auto;">
-                                        <!-- Типы станков загружаются через JS -->
+
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Времена переналадки</h6>
+                                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#setupTimeModal">
+                                            <i class="bi bi-plus"></i> Добавить время переналадки
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="setup-times-container">
+                                            <!-- Времена переналадки загружаются через JS -->
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -226,6 +307,44 @@
 
 <!-- Подключаем модальные окна -->
 @await Html.PartialAsync("_Modals")
+
+<!-- Модальное окно быстрого создания партии -->
+<div class="modal fade" id="quickBatchModal" tabindex="-1" aria-labelledby="quickBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickBatchModalLabel">Быстрое создание партии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickBatchForm">
+                    <div class="mb-3">
+                        <label for="quickDetailSelect" class="form-label">Деталь</label>
+                        <select class="form-select" id="quickDetailSelect" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quickQuantity" class="form-label">Количество</label>
+                        <input type="number" class="form-control" id="quickQuantity" min="1" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="quickAutoStart" checked>
+                        <label class="form-check-label" for="quickAutoStart">
+                            Автоматически запустить в производство
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" id="quickCreateBatchBtn">
+                    <i class="bi bi-lightning"></i> Создать и запустить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
@@ -243,13 +362,205 @@
             queueItems: @Html.Raw(Json.Serialize(Model.QueueItems ?? new List<StageQueueDto>()))
         };
 
-        // Ждем полной загрузки DOM и jQuery
-        $(document).ready(function() {
-            console.log('Document ready, initialData:', window.initialData);
-        });
-        console.log(window.initialData.details);
+        // Глобальная переменная для диаграммы Ганта
+        window.dashboardData = window.initialData;
 
+        // Инициализация расширенной диаграммы Ганта
+        let enhancedGanttChart;
+
+        $(document).ready(function() {
+            console.log('Document ready, initializing enhanced dashboard...');
+
+            // Инициализируем расширенную диаграмму Ганта
+            enhancedGanttChart = new EnhancedGanttChart('gantt-container');
+
+            // Ждем полной загрузки данных
+            setTimeout(() => {
+                updateStatisticsCards();
+                renderEnhancedGanttChart();
+            }, 100);
+        });
+
+        // Обновление карточек статистики
+        function updateStatisticsCards() {
+            const workingMachines = window.dashboardData.ganttStages.filter(s =>
+                s.status === 'InProgress' && s.machineId
+            ).map(s => s.machineId).filter((id, index, arr) => arr.indexOf(id) === index).length;
+
+            const activeStages = window.dashboardData.ganttStages.filter(s =>
+                s.status === 'InProgress'
+            ).length;
+
+            $('#working-machines').text(workingMachines);
+            $('#active-stages').text(activeStages);
+        }
+
+        // Отображение расширенной диаграммы Ганта
+        function renderEnhancedGanttChart() {
+            if (enhancedGanttChart) {
+                enhancedGanttChart.setData(
+                    window.dashboardData.ganttStages,
+                    window.dashboardData.machines
+                );
+            }
+        }
+
+        // Дополнительные функции быстрых действий
+        function optimizeAllQueues() {
+            $.post('/api/AutoScheduler/optimize')
+                .done(function(response) {
+                    if (response.success) {
+                        showNotification('Очереди оптимизированы', 'success');
+                        refreshData();
+                    } else {
+                        showNotification(response.message, 'error');
+                    }
+                })
+                .fail(function() {
+                    showNotification('Ошибка при оптимизации очередей', 'error');
+                });
+        }
+
+        function autoStartPendingStages() {
+            // Запускаем все готовые к запуску этапы
+            const pendingStages = window.dashboardData.ganttStages.filter(s => s.status === 'Pending');
+
+            if (pendingStages.length === 0) {
+                showNotification('Нет этапов готовых к запуску', 'info');
+                return;
+            }
+
+            let started = 0;
+            pendingStages.forEach(stage => {
+                $.post('/Main/StartStageExecution', { stageId: stage.id })
+                    .done(function(response) {
+                        if (response.success) {
+                            started++;
+                        }
+                    });
+            });
+
+            setTimeout(() => {
+                showNotification(`Запущено ${started} из ${pendingStages.length} этапов`, 'success');
+                refreshData();
+            }, 1000);
+        }
+
+        function resolveConflicts() {
+            $.post('/api/AutoScheduler/resolve-conflicts')
+                .done(function(response) {
+                    if (response.success) {
+                        showNotification('Конфликты разрешены', 'success');
+                        refreshData();
+                    } else {
+                        showNotification(response.message, 'error');
+                    }
+                })
+                .fail(function() {
+                    showNotification('Ошибка при разрешении конфликтов', 'error');
+                });
+        }
+
+        function showGanttLegend() {
+            const legendModal = $(`
+                <div class="modal fade" id="ganttLegendModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Легенда диаграммы Ганта</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Статусы этапов:</h6>
+                                        <div class="mb-2"><span class="badge bg-light text-dark">Ожидает запуска</span> - Pending</div>
+                                        <div class="mb-2"><span class="badge bg-warning text-dark">В очереди</span> - Waiting</div>
+                                        <div class="mb-2"><span class="badge bg-primary">В работе</span> - InProgress</div>
+                                        <div class="mb-2"><span class="badge bg-secondary">На паузе</span> - Paused</div>
+                                        <div class="mb-2"><span class="badge bg-success">Завершено</span> - Completed</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Управление:</h6>
+                                        <p><strong>Ctrl + колесико:</strong> масштабирование</p>
+                                        <p><strong>Shift + колесико:</strong> горизонтальная прокрутка</p>
+                                        <p><strong>Клик по этапу:</strong> подробная информация</p>
+                                        <p><strong>Наведение на этап:</strong> быстрые действия</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            $('body').append(legendModal);
+            $('#ganttLegendModal').modal('show').on('hidden.bs.modal', function() {
+                $(this).remove();
+            });
+        }
+
+        function autoOptimizeSchedule() {
+            if (!confirm('Автоматически оптимизировать расписание? Это может изменить назначение этапов на станки.')) {
+                return;
+            }
+
+            $.post('/api/AutoScheduler/optimize')
+                .done(function(response) {
+                    if (response.success) {
+                        showNotification('Расписание оптимизировано', 'success');
+                        refreshData();
+                    } else {
+                        showNotification(response.message, 'error');
+                    }
+                })
+                .fail(function() {
+                    showNotification('Ошибка при оптимизации расписания', 'error');
+                });
+        }
+
+        // Быстрое создание партии
+        $('#quickCreateBatchBtn').on('click', function() {
+            const detailId = $('#quickDetailSelect').val();
+            const quantity = $('#quickQuantity').val();
+            const autoStart = $('#quickAutoStart').is(':checked');
+
+            if (!detailId || !quantity) {
+                showNotification('Заполните все поля', 'error');
+                return;
+            }
+
+            const data = {
+                detailId: parseInt(detailId),
+                quantity: parseInt(quantity),
+                autoStart: autoStart
+            };
+
+            $.ajax({
+                url: '/Main/QuickCreateBatch',
+                method: 'POST',
+                data: JSON.stringify(data),
+                contentType: 'application/json',
+                success: function(response) {
+                    if (response.success) {
+                        $('#quickBatchModal').modal('hide');
+                        refreshData();
+                        showNotification(response.message, 'success');
+
+                        // Очищаем форму
+                        $('#quickDetailSelect').val('');
+                        $('#quickQuantity').val('');
+                    } else {
+                        showNotification(response.message, 'error');
+                    }
+                },
+                error: function() {
+                    showNotification('Ошибка при создании партии', 'error');
+                }
+            });
+        });
     </script>
 
+    <script src="~/js/enhanced-gantt-chart.js"></script>
     <script src="~/js/main-dashboard.js"></script>
 }

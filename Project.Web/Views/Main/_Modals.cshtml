@@ -1,4 +1,5 @@
-﻿<!-- Модальное окно для создания/редактирования детали -->
+﻿
+<!-- Модальное окно для создания/редактирования детали -->
 <div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -17,11 +18,23 @@
                         <label for="detailName" class="form-label">Название детали</label>
                         <input type="text" class="form-control" id="detailName" required>
                     </div>
+                    <div class="mt-3" id="detailRouteInfo" style="display: none;">
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle"></i> Маршрут детали</h6>
+                            <div id="routePreview"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="editDetailRoute()">
+                                <i class="bi bi-pencil"></i> Редактировать маршрут
+                            </button>
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="saveDetailBtn">Сохранить</button>
+                <button type="button" class="btn btn-success" id="saveAndCreateRouteBtn" style="display: none;">
+                    Сохранить и создать маршрут
+                </button>
             </div>
         </div>
     </div>
@@ -42,6 +55,10 @@
                         <label for="machineTypeName" class="form-label">Название типа станка</label>
                         <input type="text" class="form-control" id="machineTypeName" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="machineTypeDescription" class="form-label">Описание (необязательно)</label>
+                        <textarea class="form-control" id="machineTypeDescription" rows="3"></textarea>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -54,7 +71,7 @@
 
 <!-- Модальное окно для создания/редактирования станка -->
 <div class="modal fade" id="machineModal" tabindex="-1" aria-labelledby="machineModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="machineModalLabel">Станок</h5>
@@ -63,29 +80,56 @@
             <div class="modal-body">
                 <form id="machineForm">
                     <input type="hidden" id="machineId">
-                    <div class="mb-3">
-                        <label for="machineName" class="form-label">Название станка</label>
-                        <input type="text" class="form-control" id="machineName" required>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="machineName" class="form-label">Название станка</label>
+                                <input type="text" class="form-control" id="machineName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="machineInventoryNumber" class="form-label">Инвентарный номер</label>
+                                <input type="text" class="form-control" id="machineInventoryNumber" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="machineMachineTypeId" class="form-label">Тип станка</label>
+                                <select class="form-select" id="machineMachineTypeId" required>
+                                    <option value="">Выберите тип станка...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="machinePriority" class="form-label">Приоритет (0-100)</label>
+                                <input type="number" class="form-control" id="machinePriority" min="0" max="100" value="50">
+                                <div class="form-text">Чем выше приоритет, тем предпочтительнее станок для планирования</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="machineDescription" class="form-label">Описание (необязательно)</label>
+                                <textarea class="form-control" id="machineDescription" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="machineIsActive" checked>
+                                <label class="form-check-label" for="machineIsActive">
+                                    Активен (доступен для планирования)
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="machineInventoryNumber" class="form-label">Инвентарный номер</label>
-                        <input type="text" class="form-control" id="machineInventoryNumber" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="machineMachineTypeId" class="form-label">Тип станка</label>
-                        <select class="form-select" id="machineMachineTypeId" required>
-                            <option value="">Выберите тип станка...</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="machinePriority" class="form-label">Приоритет</label>
-                        <input type="number" class="form-control" id="machinePriority" min="0" value="0">
+
+                    <!-- Дополнительная информация о станке -->
+                    <div class="mt-3" id="machineStatusInfo" style="display: none;">
+                        <hr>
+                        <h6>Текущий статус станка</h6>
+                        <div id="currentMachineStatus"></div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="saveMachineBtn">Сохранить</button>
+                <button type="button" class="btn btn-outline-info" id="viewMachineWorkspaceBtn" style="display: none;">
+                    <i class="bi bi-tools"></i> Рабочее место
+                </button>
             </div>
         </div>
     </div>
@@ -101,29 +145,72 @@
             </div>
             <div class="modal-body">
                 <form id="batchForm">
-                    <div class="mb-3">
-                        <label for="batchDetailSelect" class="form-label">Деталь</label>
-                        <select class="form-select" id="batchDetailSelect" required>
-                            <option value="">Выберите деталь...</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="batchQuantity" class="form-label">Количество</label>
-                        <input type="number" class="form-control" id="batchQuantity" min="1" required>
-                    </div>
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="splitBatchCheck">
-                        <label class="form-check-label" for="splitBatchCheck">
-                            Разделить на подпартии
-                        </label>
-                    </div>
-                    <div id="subBatchesContainer" class="d-none">
-                        <div class="mb-3">
-                            <label for="subBatchCount" class="form-label">Количество подпартий</label>
-                            <input type="number" class="form-control" id="subBatchCount" min="2" value="2">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="batchDetailSelect" class="form-label">Деталь</label>
+                                <select class="form-select" id="batchDetailSelect" required>
+                                    <option value="">Выберите деталь...</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="batchQuantity" class="form-label">Общее количество</label>
+                                <input type="number" class="form-control" id="batchQuantity" min="1" required>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="splitBatchCheck">
+                                <label class="form-check-label" for="splitBatchCheck">
+                                    Разделить на подпартии
+                                </label>
+                            </div>
+                            <div id="subBatchesContainer" class="d-none">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="subBatchCount" class="form-label">Количество подпартий</label>
+                                            <input type="number" class="form-control" id="subBatchCount" min="2" value="2">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Режим деления</label>
+                                            <div class="btn-group w-100" role="group">
+                                                <input type="radio" class="btn-check" name="splitMode" id="autoSplit" checked>
+                                                <label class="btn btn-outline-primary" for="autoSplit">Авто</label>
+                                                <input type="radio" class="btn-check" name="splitMode" id="manualSplit">
+                                                <label class="btn btn-outline-primary" for="manualSplit">Ручной</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="subBatchQuantities">
+                                    <!-- Поля для ввода количества в подпартиях будут добавлены динамически -->
+                                </div>
+                            </div>
                         </div>
-                        <div id="subBatchQuantities">
-                            <!-- Поля для ввода количества в подпартиях будут добавлены динамически -->
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Информация о детали</h6>
+                                </div>
+                                <div class="card-body" id="selectedDetailInfo">
+                                    <p class="text-muted">Выберите деталь для просмотра информации</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-3" id="optimalBatchSizeCard" style="display: none;">
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="mb-0"><i class="bi bi-lightbulb"></i> Рекомендация</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-2">Оптимальный размер партии: <strong id="recommendedBatchSize">-</strong></p>
+                                        <button type="button" class="btn btn-sm btn-success" id="useOptimalSizeBtn">
+                                            Использовать
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -131,6 +218,9 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="createBatchBtn">Создать</button>
+                <button type="button" class="btn btn-success" id="createAndStartBatchBtn">
+                    <i class="bi bi-lightning"></i> Создать и запустить
+                </button>
             </div>
         </div>
     </div>
@@ -138,22 +228,61 @@
 
 <!-- Модальное окно для управления этапом -->
 <div class="modal fade" id="stageControlModal" tabindex="-1" aria-labelledby="stageControlModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="stageControlModalLabel">Управление этапом</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div id="stageInfo" class="mb-3">
-                    <!-- Информация об этапе -->
-                </div>
-                <div id="stageActions">
-                    <!-- Кнопки управления этапом -->
+                <div class="row">
+                    <div class="col-md-8">
+                        <div id="stageInfo" class="mb-3">
+                            <!-- Информация об этапе -->
+                        </div>
+                        <div id="stageActions">
+                            <!-- Кнопки управления этапом -->
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Быстрые действия</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="autoAssignMachine()">
+                                        <i class="bi bi-magic"></i> Автоназначение станка
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info btn-sm" onclick="showSimilarStages()">
+                                        <i class="bi bi-search"></i> Похожие этапы
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="showStageHistory()">
+                                        <i class="bi bi-clock-history"></i> История этапа
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3" id="stageProgressCard" style="display: none;">
+                            <div class="card-header">
+                                <h6 class="mb-0">Прогресс выполнения</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress mb-2" style="height: 20px;">
+                                    <div class="progress-bar" id="stageProgressBar" role="progressbar"></div>
+                                </div>
+                                <div id="stageProgressInfo"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-outline-primary" id="refreshStageInfoBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                </button>
             </div>
         </div>
     </div>
@@ -161,41 +290,90 @@
 
 <!-- Модальное окно для добавления времени переналадки -->
 <div class="modal fade" id="setupTimeModal" tabindex="-1" aria-labelledby="setupTimeModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="setupTimeModalLabel">Время переналадки</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form id="setupTimeForm">
-                    <div class="mb-3">
-                        <label for="setupMachineId" class="form-label">Станок</label>
-                        <select class="form-select" id="setupMachineId" required>
-                            <option value="">Выберите станок...</option>
-                        </select>
+                <div class="row">
+                    <div class="col-md-8">
+                        <form id="setupTimeForm">
+                            <div class="mb-3">
+                                <label for="setupMachineId" class="form-label">Станок</label>
+                                <select class="form-select" id="setupMachineId" required>
+                                    <option value="">Выберите станок...</option>
+                                </select>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="setupFromDetailId" class="form-label">С детали</label>
+                                        <select class="form-select" id="setupFromDetailId" required>
+                                            <option value="">Выберите деталь...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="setupToDetailId" class="form-label">На деталь</label>
+                                        <select class="form-select" id="setupToDetailId" required>
+                                            <option value="">Выберите деталь...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="setupTime" class="form-label">Время переналадки</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="setupTime" step="0.01" min="0" required>
+                                    <span class="input-group-text">часов</span>
+                                </div>
+                                <div class="form-text">Укажите время в часах (например: 0.5 = 30 минут)</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="setupNotes" class="form-label">Примечания (необязательно)</label>
+                                <textarea class="form-control" id="setupNotes" rows="2"></textarea>
+                            </div>
+                        </form>
                     </div>
-                    <div class="mb-3">
-                        <label for="setupFromDetailId" class="form-label">С детали</label>
-                        <select class="form-select" id="setupFromDetailId" required>
-                            <option value="">Выберите деталь...</option>
-                        </select>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-header">
+                                <h6 class="mb-0">Подсказка</h6>
+                            </div>
+                            <div class="card-body">
+                                <small class="text-muted">
+                                    Время переналадки зависит от типа детали и сложности настройки станка.
+                                    <br><br>
+                                    Примерные значения:
+                                    <ul class="mt-2">
+                                        <li>Простая переналадка: 0.1-0.3 ч</li>
+                                        <li>Средняя переналадка: 0.5-1.0 ч</li>
+                                        <li>Сложная переналадка: 1.5-3.0 ч</li>
+                                    </ul>
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3" id="setupTimePreview" style="display: none;">
+                            <div class="card-header">
+                                <h6 class="mb-0">Предпросмотр</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="setupPreviewContent"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="setupToDetailId" class="form-label">На деталь</label>
-                        <select class="form-select" id="setupToDetailId" required>
-                            <option value="">Выберите деталь...</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="setupTime" class="form-label">Время переналадки (часы)</label>
-                        <input type="number" class="form-control" id="setupTime" step="0.01" min="0" required>
-                    </div>
-                </form>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="addSetupTimeBtn">Сохранить</button>
+                <button type="button" class="btn btn-success" id="addMultipleSetupTimesBtn">
+                    <i class="bi bi-plus-circle"></i> Сохранить и добавить еще
+                </button>
             </div>
         </div>
     </div>
@@ -203,7 +381,7 @@
 
 <!-- Модальное окно для маршрута детали -->
 <div class="modal fade" id="routeModal" tabindex="-1" aria-labelledby="routeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="routeModalLabel">Маршрут детали</h5>
@@ -221,7 +399,59 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                <button type="button" class="btn btn-primary" id="editRouteBtn" style="display: none;">Редактировать</button>
+                <button type="button" class="btn btn-outline-primary" id="editRouteBtn" style="display: none;">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </button>
+                <button type="button" class="btn btn-success" id="createRouteBtn" style="display: none;">
+                    <i class="bi bi-plus"></i> Создать маршрут
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно статистики станков -->
+<div class="modal fade" id="machineStatisticsModal" tabindex="-1" aria-labelledby="machineStatisticsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="machineStatisticsModalLabel">Статистика станков</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Фильтры</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="statsPeriod" class="form-label">Период</label>
+                                <select class="form-select form-select-sm" id="statsPeriod">
+                                    <option value="today">Сегодня</option>
+                                    <option value="week">Неделя</option>
+                                    <option value="month">Месяц</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="statsMachineType" class="form-label">Тип станка</label>
+                                <select class="form-select form-select-sm" id="statsMachineType">
+                                    <option value="">Все типы</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="refreshMachineStatistics()">
+                            <i class="bi bi-arrow-clockwise"></i> Обновить
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="exportMachineStatistics()">
+                            <i class="bi bi-download"></i> Экспорт
+                        </button>
+                    </div>
+                </div>
+
+                <div id="machineStatisticsContent">
+                    <!-- Содержимое статистики загружается динамически -->
+                </div>
             </div>
         </div>
     </div>
@@ -230,70 +460,310 @@
 <script>
     // Обработчики для модальных окон
     $(document).ready(function() {
-        console.log('Modals script loaded');
+        console.log('Enhanced modals script loaded');
 
-        // Обработчики для кнопок "Добавить" - используем click напрямую
-        $('.btn[data-bs-target="#detailModal"]').on('click', function(e) {
-            e.preventDefault();
-            if (typeof addDetail === 'function') {
-                addDetail();
+        // Обработчики для деталей
+        $('#batchDetailSelect').on('change', function() {
+            const detailId = $(this).val();
+            if (detailId) {
+                loadDetailInfo(detailId);
+                loadOptimalBatchSize(detailId);
             } else {
-                console.error('addDetail function not found');
+                $('#selectedDetailInfo').html('<p class="text-muted">Выберите деталь для просмотра информации</p>');
+                $('#optimalBatchSizeCard').hide();
             }
         });
 
-        $('.btn[data-bs-target="#machineTypeModal"]').on('click', function(e) {
-            e.preventDefault();
-            if (typeof addMachineType === 'function') {
-                addMachineType();
-            } else {
-                console.error('addMachineType function not found');
+        // Обработчики для подпартий
+        $('#splitBatchCheck').on('change', function() {
+            $('#subBatchesContainer').toggleClass('d-none', !this.checked);
+            if (this.checked) {
+                generateSubBatchInputs();
             }
         });
 
-        $('.btn[data-bs-target="#machineModal"]').on('click', function(e) {
-            e.preventDefault();
-            if (typeof addMachine === 'function') {
-                addMachine();
-            } else {
-                console.error('addMachine function not found');
+        $('#subBatchCount').on('change', generateSubBatchInputs);
+        $('input[name="splitMode"]').on('change', generateSubBatchInputs);
+
+        // Обработчики для времен переналадки
+        $('#setupMachineId, #setupFromDetailId, #setupToDetailId').on('change', updateSetupTimePreview);
+
+        // Обработчик для использования оптимального размера
+        $('#useOptimalSizeBtn').on('click', function() {
+            const optimalSize = $('#recommendedBatchSize').text();
+            if (optimalSize && optimalSize !== '-') {
+                $('#batchQuantity').val(optimalSize);
+                generateSubBatchInputs();
             }
         });
 
-        $('.btn[data-bs-target="#setupTimeModal"]').on('click', function(e) {
-            e.preventDefault();
-            $('#setupTimeModal').modal('show');
+        // Обработчик создания и запуска партии
+        $('#createAndStartBatchBtn').on('click', function() {
+            createBatchWithAutoStart(true);
+        });
+
+        $('#createBatchBtn').on('click', function() {
+            createBatchWithAutoStart(false);
+        });
+
+        // Обработчик для добавления нескольких времен переналадки
+        $('#addMultipleSetupTimesBtn').on('click', function() {
+            addSetupTime(false); // false означает не закрывать модальное окно
         });
 
         // Очистка форм при закрытии модальных окон
-        $('#detailModal').on('hidden.bs.modal', function () {
-            clearDetailForm();
-        });
-
-        $('#machineTypeModal').on('hidden.bs.modal', function () {
-            clearMachineTypeForm();
-        });
-
-        $('#machineModal').on('hidden.bs.modal', function () {
-            clearMachineForm();
-        });
-
-        $('#setupTimeModal').on('hidden.bs.modal', function () {
-            clearSetupTimeForm();
-        });
+        $('#detailModal').on('hidden.bs.modal', clearDetailForm);
+        $('#machineTypeModal').on('hidden.bs.modal', clearMachineTypeForm);
+        $('#machineModal').on('hidden.bs.modal', clearMachineForm);
+        $('#createBatchModal').on('hidden.bs.modal', clearBatchForm);
+        $('#setupTimeModal').on('hidden.bs.modal', clearSetupTimeForm);
     });
 
-    // Вспомогательные функции очистки форм
+    // Функции для работы с информацией о детали
+    function loadDetailInfo(detailId) {
+        const detail = window.dashboardData.details.find(d => d.id == detailId);
+        if (!detail) return;
+
+        let infoHtml = `
+            <h6>${detail.name}</h6>
+            <p class="mb-2"><strong>Номер:</strong> ${detail.number}</p>
+        `;
+
+        // Получаем статистику по детали
+        const detailStages = window.dashboardData.ganttStages.filter(s => s.detailName === detail.name);
+        if (detailStages.length > 0) {
+            const inProgress = detailStages.filter(s => s.status === 'InProgress').length;
+            const completed = detailStages.filter(s => s.status === 'Completed').length;
+
+            infoHtml += `
+                <div class="mt-2">
+                    <small class="text-muted">Сейчас в производстве:</small>
+                    <div class="d-flex justify-content-between">
+                        <span>В работе: <span class="badge bg-primary">${inProgress}</span></span>
+                        <span>Завершено: <span class="badge bg-success">${completed}</span></span>
+                    </div>
+                </div>
+            `;
+        }
+
+        $('#selectedDetailInfo').html(infoHtml);
+    }
+
+    function loadOptimalBatchSize(detailId) {
+        $.get(`/Planning/OptimalBatchSize?detailId=${detailId}`)
+            .done(function(data) {
+                $('#recommendedBatchSize').text(data.optimalBatchSize);
+                $('#optimalBatchSizeCard').show();
+            })
+            .fail(function() {
+                $('#optimalBatchSizeCard').hide();
+            });
+    }
+
+    // Функции для генерации полей подпартий
+    function generateSubBatchInputs() {
+        const quantity = parseInt($('#batchQuantity').val()) || 0;
+        const count = parseInt($('#subBatchCount').val()) || 2;
+        const isManual = $('#manualSplit').is(':checked');
+        const container = $('#subBatchQuantities');
+
+        container.empty();
+
+        if (quantity > 0 && count > 1) {
+            if (isManual) {
+                // Ручной режим - пользователь вводит количества сам
+                for (let i = 0; i < count; i++) {
+                    container.append(`
+                        <div class="mb-2">
+                            <label class="form-label">Подпартия ${i + 1}</label>
+                            <input type="number" class="form-control subBatchQuantity" min="1" placeholder="Введите количество" required>
+                        </div>
+                    `);
+                }
+
+                // Добавляем индикатор суммы
+                container.append(`
+                    <div class="alert alert-info">
+                        <small>Общее количество: <span id="subBatchTotal">0</span> из ${quantity}</small>
+                    </div>
+                `);
+
+                // Обработчик изменения количества
+                $('.subBatchQuantity').on('input', updateSubBatchTotal);
+            } else {
+                // Автоматический режим - равное распределение
+                const baseQuantity = Math.floor(quantity / count);
+                const remainder = quantity % count;
+
+                for (let i = 0; i < count; i++) {
+                    const subQuantity = i < remainder ? baseQuantity + 1 : baseQuantity;
+                    container.append(`
+                        <div class="mb-2">
+                            <label class="form-label">Подпартия ${i + 1}</label>
+                            <input type="number" class="form-control subBatchQuantity" min="1" value="${subQuantity}" required>
+                        </div>
+                    `);
+                }
+            }
+        }
+    }
+
+    function updateSubBatchTotal() {
+        let total = 0;
+        $('.subBatchQuantity').each(function() {
+            total += parseInt($(this).val()) || 0;
+        });
+        $('#subBatchTotal').text(total);
+    }
+
+    // Функции для создания партии
+    function createBatchWithAutoStart(autoStart) {
+        const detailId = $('#batchDetailSelect').val();
+        const quantity = parseInt($('#batchQuantity').val());
+        const splitBatch = $('#splitBatchCheck').is(':checked');
+
+        if (!detailId || !quantity || quantity <= 0) {
+            showNotification('Заполните все поля корректно', 'error');
+            return;
+        }
+
+        const data = {
+            detailId: parseInt(detailId),
+            quantity: quantity,
+            autoStart: autoStart,
+            subBatches: []
+        };
+
+        if (splitBatch) {
+            let totalSubQuantity = 0;
+            $('.subBatchQuantity').each(function() {
+                const qty = parseInt($(this).val()) || 0;
+                if (qty > 0) {
+                    data.subBatches.push({ quantity: qty });
+                    totalSubQuantity += qty;
+                }
+            });
+
+            if (totalSubQuantity !== quantity) {
+                showNotification('Сумма подпартий должна равняться общему количеству', 'error');
+                return;
+            }
+        }
+
+        const url = autoStart ? '/Main/QuickCreateBatch' : '/Main/CreateBatch';
+
+        $.ajax({
+            url: url,
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    $('#createBatchModal').modal('hide');
+                    refreshData();
+                    showNotification(response.message, 'success');
+                    clearBatchForm();
+                } else {
+                    showNotification(response.message, 'error');
+                }
+            },
+            error: function() {
+                showNotification('Ошибка при создании партии', 'error');
+            }
+        });
+    }
+
+    // Функции для времен переналадки
+    function updateSetupTimePreview() {
+        const machineId = $('#setupMachineId').val();
+        const fromDetailId = $('#setupFromDetailId').val();
+        const toDetailId = $('#setupToDetailId').val();
+        const time = $('#setupTime').val();
+
+        if (machineId && fromDetailId && toDetailId && time) {
+            const machine = window.dashboardData.machines.find(m => m.id == machineId);
+            const fromDetail = window.dashboardData.details.find(d => d.id == fromDetailId);
+            const toDetail = window.dashboardData.details.find(d => d.id == toDetailId);
+
+            if (machine && fromDetail && toDetail) {
+                const previewHtml = `
+                    <div class="small">
+                        <strong>Станок:</strong> ${machine.name}<br>
+                        <strong>Переналадка:</strong> ${fromDetail.name} → ${toDetail.name}<br>
+                        <strong>Время:</strong> ${time} ч (${Math.round(time * 60)} мин)
+                    </div>
+                `;
+                $('#setupPreviewContent').html(previewHtml);
+                $('#setupTimePreview').show();
+            }
+        } else {
+            $('#setupTimePreview').hide();
+        }
+    }
+
+    // Добавленная функция добавления времени переналадки
+    function addSetupTime(closeModal = true) {
+        const data = {
+            machineId: parseInt($('#setupMachineId').val()),
+            fromDetailId: parseInt($('#setupFromDetailId').val()),
+            toDetailId: parseInt($('#setupToDetailId').val()),
+            time: parseFloat($('#setupTime').val())
+        };
+
+        if (!data.machineId || !data.fromDetailId || !data.toDetailId || !data.time || data.time <= 0) {
+            showNotification('Заполните все поля корректно', 'error');
+            return;
+        }
+
+        if (data.fromDetailId === data.toDetailId) {
+            showNotification('Деталь "откуда" и "куда" не могут быть одинаковыми', 'error');
+            return;
+        }
+
+        $.ajax({
+            url: '/Main/CreateSetupTime',
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    if (closeModal) {
+                        $('#setupTimeModal').modal('hide');
+                    }
+                    showNotification(response.message, 'success');
+                    if (!closeModal) {
+                        // Очищаем только поля деталей, оставляем станок
+                        $('#setupFromDetailId').val('');
+                        $('#setupToDetailId').val('');
+                        $('#setupTime').val('');
+                        $('#setupNotes').val('');
+                        $('#setupTimePreview').hide();
+                    }
+                    loadSetupTimes();
+                } else {
+                    showNotification(response.message, 'error');
+                }
+            },
+            error: function() {
+                showNotification('Ошибка при добавлении времени переналадки', 'error');
+            }
+        });
+    }
+
+    // Функции очистки форм (обновленные)
     function clearDetailForm() {
         $('#detailId').val('');
         $('#detailNumber').val('');
         $('#detailName').val('');
         $('#detailModalLabel').text('Деталь');
+        $('#detailRouteInfo').hide();
+        $('#saveAndCreateRouteBtn').hide();
     }
 
     function clearMachineTypeForm() {
         $('#machineTypeId').val('');
         $('#machineTypeName').val('');
+        $('#machineTypeDescription').val('');
         $('#machineTypeModalLabel').text('Тип станка');
     }
 
@@ -302,8 +772,22 @@
         $('#machineName').val('');
         $('#machineInventoryNumber').val('');
         $('#machineMachineTypeId').val('');
-        $('#machinePriority').val('0');
+        $('#machinePriority').val('50');
+        $('#machineDescription').val('');
+        $('#machineIsActive').prop('checked', true);
         $('#machineModalLabel').text('Станок');
+        $('#machineStatusInfo').hide();
+        $('#viewMachineWorkspaceBtn').hide();
+    }
+
+    function clearBatchForm() {
+        $('#batchDetailSelect').val('');
+        $('#batchQuantity').val('');
+        $('#splitBatchCheck').prop('checked', false);
+        $('#subBatchesContainer').addClass('d-none');
+        $('#subBatchQuantities').empty();
+        $('#selectedDetailInfo').html('<p class="text-muted">Выберите деталь для просмотра информации</p>');
+        $('#optimalBatchSizeCard').hide();
     }
 
     function clearSetupTimeForm() {
@@ -311,5 +795,66 @@
         $('#setupFromDetailId').val('');
         $('#setupToDetailId').val('');
         $('#setupTime').val('');
+        $('#setupNotes').val('');
+        $('#setupTimePreview').hide();
+    }
+
+    // Дополнительные функции
+    function showMachineStatistics() {
+        $('#machineStatisticsModal').modal('show');
+        loadMachineStatistics();
+    }
+
+    function loadMachineStatistics() {
+        // Загрузка статистики станков
+        $.get('/Main/GetMachineStatistics')
+            .done(function(data) {
+                renderMachineStatistics(data);
+            })
+            .fail(function() {
+                $('#machineStatisticsContent').html('<div class="alert alert-danger">Ошибка загрузки статистики</div>');
+            });
+    }
+
+    function renderMachineStatistics(data) {
+        let html = '<div class="row">';
+
+        data.forEach(machine => {
+            html += `
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-title">${machine.name}</h6>
+                            <p class="card-text">
+                                <span class="badge ${machine.statusCode === 'working' ? 'bg-primary' : machine.statusCode === 'setup' ? 'bg-info' : 'bg-success'}">${machine.status}</span>
+                            </p>
+                            ${machine.currentStage ? `
+                                <small class="text-muted">
+                                    Текущий этап: ${machine.currentStage.stageName}<br>
+                                    Деталь: ${machine.currentStage.detailName}
+                                </small>
+                            ` : ''}
+                            <div class="mt-2">
+                                <small>Эффективность: ${machine.efficiency}%</small>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar" style="width: ${machine.efficiency}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        $('#machineStatisticsContent').html(html);
+    }
+
+    // Функции для маршрутов
+    function editDetailRoute() {
+        const detailId = $('#detailId').val();
+        if (detailId) {
+            window.location.href = `/Route/Edit?detailId=${detailId}`;
+        }
     }
 </script>

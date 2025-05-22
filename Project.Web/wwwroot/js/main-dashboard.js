@@ -863,18 +863,317 @@ function showBatchDetails(batchId) {
     showNotification('Функция в разработке', 'info');
 }
 
+// Функция показа маршрута детали
 function showRouteModal(detailId) {
-    showNotification('Функция в разработке', 'info');
+    const detail = dashboardData.details.find(d => d.id === detailId);
+    if (!detail) {
+        showNotification('Деталь не найдена', 'error');
+        return;
+    }
+
+    $('#routeModalLabel').text(`Маршрут детали: ${detail.name}`);
+    $('#routeContent').html(`
+        <div class="text-center p-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+            <p class="mt-2">Загрузка маршрута...</p>
+        </div>
+    `);
+
+    // Показываем модальное окно
+    $('#routeModal').modal('show');
+
+    // Загружаем маршрут
+    $.get(`/Route/GetRouteForDetail?detailId=${detailId}`)
+        .done(function (route) {
+            if (route && route.stages && route.stages.length > 0) {
+                let stagesHtml = `
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="10%">№</th>
+                                    <th width="30%">Операция</th>
+                                    <th width="25%">Тип станка</th>
+                                    <th width="15%">Время на ед. (ч)</th>
+                                    <th width="20%">Время переналадки (ч)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                route.stages.forEach(stage => {
+                    stagesHtml += `
+                        <tr>
+                            <td><span class="badge bg-primary">${stage.order}</span></td>
+                            <td>
+                                <strong>${stage.name}</strong>
+                                <br><small class="text-muted">${stage.stageType || 'Основная операция'}</small>
+                            </td>
+                            <td>
+                                <i class="bi bi-tools text-secondary me-1"></i>
+                                ${stage.machineTypeName}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">${stage.normTime}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-warning text-dark">${stage.setupTime}</span>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                stagesHtml += `
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-3 p-3 bg-light rounded">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Общее время изготовления 1 детали:</strong>
+                                <span class="text-primary ms-2">${route.stages.reduce((sum, s) => sum + s.normTime, 0).toFixed(2)} ч</span>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Общее время переналадки:</strong>
+                                <span class="text-warning ms-2">${route.stages.reduce((sum, s) => sum + s.setupTime, 0).toFixed(2)} ч</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                $('#routeContent').html(stagesHtml);
+                $('#editRouteBtn').show().off('click').on('click', function () {
+                    window.location.href = `/Route/Edit/${route.id}`;
+                });
+            } else {
+                $('#routeContent').html(`
+                    <div class="text-center p-5">
+                        <i class="bi bi-diagram-3" style="font-size: 3rem; color: #6c757d;"></i>
+                        <h4 class="mt-3">Маршрут не создан</h4>
+                        <p class="text-muted">Для этой детали ещё не создан маршрут изготовления.</p>
+                        <button class="btn btn-primary" onclick="createRouteForDetail(${detailId})">
+                            <i class="bi bi-plus"></i> Создать маршрут
+                        </button>
+                    </div>
+                `);
+                $('#editRouteBtn').hide();
+            }
+        })
+        .fail(function () {
+            $('#routeContent').html(`
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Ошибка при загрузке маршрута
+                </div>
+            `);
+            $('#editRouteBtn').hide();
+        });
 }
 
+// Функция создания маршрута для детали
+function createRouteForDetail(detailId) {
+    $('#routeModal').modal('hide');
+    window.location.href = `/Route/Create?detailId=${detailId}`;
+}
+
+// Обновленная функция показа деталей партии
+function showBatchDetails(batchId) {
+    window.location.href = `/Batch/Details/${batchId}`;
+}
+
+// Функция приоритизации этапа
+function prioritizeStage(stageId, machineId) {
+    if (!confirm('Вы уверены, что хотите приоритизировать этот этап? Текущий этап на станке будет приостановлен.')) {
+        return;
+    }
+
+    $.post('/Main/PrioritizeStage', { stageId: stageId, machineId: machineId })
+        .done(function (response) {
+            if (response.success) {
+                refreshData();
+                showNotification('Этап успешно приоритизирован', 'success');
+            } else {
+                showNotification(response.message || 'Ошибка при приоритизации этапа', 'error');
+            }
+        })
+        .fail(function () {
+            showNotification('Ошибка при приоритизации этапа', 'error');
+        });
+}
+
+// Функция показа модального окна переназначения этапа
+function showReassignModal(stageId) {
+    const stage = dashboardData.ganttStages.find(s => s.id === stageId);
+    if (!stage) {
+        showNotification('Этап не найден', 'error');
+        return;
+    }
+
+    // Создаем модальное окно переназначения если его нет
+    if (!$('#reassignStageModal').length) {
+        const modalHtml = `
+            <div class="modal fade" id="reassignStageModal" tabindex="-1" aria-labelledby="reassignStageModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="reassignStageModalLabel">Переназначить этап</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="reassignStageInfo" class="mb-3"></div>
+                            <div class="mb-3">
+                                <label for="reassignMachineSelect" class="form-label">Выберите станок</label>
+                                <select class="form-select" id="reassignMachineSelect" required>
+                                    <option value="">Загрузка станков...</option>
+                                </select>
+                            </div>
+                            <div id="reassignMachineInfo" class="alert alert-info d-none">
+                                <h6>Информация о станке:</h6>
+                                <div id="machineStatus"></div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                            <button type="button" class="btn btn-primary" id="confirmReassignBtn">Переназначить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        $('body').append(modalHtml);
+    }
+
+    // Заполняем информацию об этапе
+    $('#reassignStageInfo').html(`
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">${stage.stageName}</h6>
+                <p class="card-text">
+                    <strong>Деталь:</strong> ${stage.detailName}<br>
+                    <strong>Текущий станок:</strong> ${stage.machineName || 'Не назначен'}<br>
+                    <strong>Статус:</strong> <span class="badge ${getStatusBadgeClass(stage.status)}">${translateStatus(stage.status)}</span><br>
+                    <strong>Тип:</strong> ${stage.isSetup ? 'Переналадка' : 'Основная операция'}
+                </p>
+            </div>
+        </div>
+    `);
+
+    // Загружаем подходящие станки
+    loadAvailableMachinesForStage(stageId);
+
+    // Обработчик подтверждения переназначения
+    $('#confirmReassignBtn').off('click').on('click', function () {
+        const newMachineId = $('#reassignMachineSelect').val();
+        if (!newMachineId) {
+            showNotification('Выберите станок', 'error');
+            return;
+        }
+
+        reassignStageToMachine(stageId, parseInt(newMachineId));
+    });
+
+    // Обработчик изменения выбора станка
+    $('#reassignMachineSelect').off('change').on('change', function () {
+        const machineId = $(this).val();
+        if (machineId) {
+            showMachineInfo(parseInt(machineId));
+        } else {
+            $('#reassignMachineInfo').addClass('d-none');
+        }
+    });
+
+    $('#reassignStageModal').modal('show');
+}
+
+// Загрузка доступных станков для этапа
+function loadAvailableMachinesForStage(stageId) {
+    $.get(`/api/gantt/machines/available/${stageId}`)
+        .done(function (machines) {
+            const select = $('#reassignMachineSelect');
+            select.empty();
+            select.append('<option value="">Выберите станок...</option>');
+
+            machines.forEach(machine => {
+                const currentStage = dashboardData.ganttStages.find(s =>
+                    s.machineId === machine.id && s.status === 'InProgress'
+                );
+
+                const status = currentStage ?
+                    (currentStage.isSetup ? ' (переналадка)' : ' (в работе)') :
+                    ' (свободен)';
+
+                select.append(`<option value="${machine.id}">${machine.name} - ${machine.machineTypeName}${status}</option>`);
+            });
+        })
+        .fail(function () {
+            $('#reassignMachineSelect').html('<option value="">Ошибка загрузки станков</option>');
+        });
+}
+
+// Показ информации о станке
+function showMachineInfo(machineId) {
+    const machine = dashboardData.machines.find(m => m.id === machineId);
+    const currentStage = dashboardData.ganttStages.find(s =>
+        s.machineId === machineId && s.status === 'InProgress'
+    );
+
+    let statusHtml = '';
+    if (currentStage) {
+        statusHtml = `
+            <div class="alert alert-warning">
+                <strong>Внимание!</strong> На данном станке выполняется этап:<br>
+                <strong>${currentStage.stageName}</strong> (${currentStage.detailName})
+                ${currentStage.isSetup ? '<br><span class="badge bg-info">Переналадка</span>' : ''}
+            </div>
+        `;
+    } else {
+        statusHtml = '<div class="alert alert-success">Станок свободен</div>';
+    }
+
+    if (machine) {
+        statusHtml += `
+            <p><strong>Инвентарный номер:</strong> ${machine.inventoryNumber}</p>
+            <p><strong>Приоритет:</strong> ${machine.priority}</p>
+        `;
+    }
+
+    $('#machineStatus').html(statusHtml);
+    $('#reassignMachineInfo').removeClass('d-none');
+}
+
+// Переназначение этапа на станок
+function reassignStageToMachine(stageId, machineId) {
+    $.post('/Main/ReassignStage', { stageId: stageId, machineId: machineId })
+        .done(function (response) {
+            if (response.success) {
+                $('#reassignStageModal').modal('hide');
+                refreshData();
+                showNotification('Этап успешно переназначен', 'success');
+            } else {
+                showNotification(response.message || 'Ошибка при переназначении этапа', 'error');
+            }
+        })
+        .fail(function () {
+            showNotification('Ошибка при переназначении этапа', 'error');
+        });
+}
+
+// Функция показа рабочего места станка
 function showMachineWorkspace(machineId) {
     window.location.href = `/OperatorWorkspace?machineId=${machineId}`;
 }
 
-function prioritizeStage(stageId, machineId) {
-    showNotification('Функция в разработке', 'info');
-}
-
-function showReassignModal(stageId) {
-    showNotification('Функция в разработке', 'info');
+// Функция получения класса бейджа статуса
+function getStatusBadgeClass(status) {
+    switch (status) {
+        case 'Pending': return 'bg-light text-dark';
+        case 'Waiting': return 'bg-warning text-dark';
+        case 'InProgress': return 'bg-primary';
+        case 'Paused': return 'bg-secondary';
+        case 'Completed': return 'bg-success';
+        case 'Error': return 'bg-danger';
+        default: return 'bg-light text-dark';
+    }
 }

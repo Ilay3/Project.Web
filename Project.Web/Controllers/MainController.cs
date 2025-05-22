@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Project.Application.Services;
 using Project.Contracts.ModelDTO;
+using Project.Domain.Repositories;
 using Project.Web.ViewModels;
 using System.Threading.Tasks;
 
@@ -16,6 +17,7 @@ namespace Project.Web.Controllers
         private readonly StageExecutionService _stageService;
         private readonly ProductionSchedulerService _schedulerService;
         private readonly SetupTimeService _setupTimeService;
+        private readonly IBatchRepository _batchRepo;
 
         public MainController(
             DetailService detailService,
@@ -25,7 +27,8 @@ namespace Project.Web.Controllers
             BatchService batchService,
             StageExecutionService stageService,
             ProductionSchedulerService schedulerService,
-            SetupTimeService setupTimeService)
+            SetupTimeService setupTimeService,
+            IBatchRepository batchRepo)
         {
             _detailService = detailService;
             _machineTypeService = machineTypeService;
@@ -35,6 +38,7 @@ namespace Project.Web.Controllers
             _stageService = stageService;
             _schedulerService = schedulerService;
             _setupTimeService = setupTimeService;
+            _batchRepo = batchRepo;
         }
 
         public async Task<IActionResult> Index()
@@ -92,6 +96,7 @@ namespace Project.Web.Controllers
                 return View(emptyModel);
             }
         }
+
 
         // API методы для модальных окон
 
@@ -356,19 +361,6 @@ namespace Project.Web.Controllers
             }
         }
 
-        [HttpPost]
-        public async Task<IActionResult> ReassignStage(int stageId, int machineId)
-        {
-            try
-            {
-                await _schedulerService.ReassignStageToMachineAsync(stageId, machineId);
-                return Json(new { success = true, message = "Этап переназначен" });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, message = ex.Message });
-            }
-        }
 
         #endregion
 
@@ -430,6 +422,274 @@ namespace Project.Web.Controllers
         }
 
         #endregion
-    }
 
+
+        #region Stage Management
+
+        /// <summary>
+        /// Приоритизация этапа
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> PrioritizeStage(int stageId, int machineId)
+        {
+            try
+            {
+                await _schedulerService.ReassignQueueAsync(machineId, stageId);
+                return Json(new { success = true, message = "Этап успешно приоритизирован" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+
+        /// <summary>
+        /// Переназначение этапа на другой станок
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> ReassignStage(int stageId, int machineId)
+        {
+            try
+            {
+                await _schedulerService.ReassignStageToMachineAsync(stageId, machineId);
+                return Json(new { success = true, message = "Этап успешно переназначен" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получение доступных станков для этапа
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetAvailableMachinesForStage(int stageId)
+        {
+            try
+            {
+                // Получаем этап через BatchRepository напрямую
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageId);
+                if (stage == null)
+                    return Json(new List<object>());
+
+                // Получаем подходящие станки через MachineService
+                var machines = await _machineService.GetMachinesByTypeAsync(stage.RouteStage.MachineTypeId);
+
+                var result = machines.Select(m => new {
+                    id = m.Id,
+                    name = m.Name,
+                    inventoryNumber = m.InventoryNumber,
+                    machineTypeName = m.MachineTypeName,
+                    priority = m.Priority
+                });
+
+                return Json(result);
+            }
+            catch (Exception ex)
+            {
+                return Json(new List<object>());
+            }
+        }
+
+
+        /// <summary>
+        /// Автоматическое назначение станка для этапа
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> AutoAssignStage(int stageId)
+        {
+            try
+            {
+                var result = await _schedulerService.AutoAssignMachineToStageAsync(stageId);
+                if (result)
+                {
+                    return Json(new { success = true, message = "Станок автоматически назначен" });
+                }
+                else
+                {
+                    return Json(new { success = false, message = "Не удалось найти подходящий станок" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Запуск этапа в работу
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> StartStageExecution(int stageId)
+        {
+            try
+            {
+                // Сначала пытаемся автоматически назначить станок, если он не назначен
+                await _schedulerService.AutoAssignMachineToStageAsync(stageId);
+
+                // Затем запускаем этап
+                var result = await _schedulerService.StartPendingStageAsync(stageId);
+                if (result)
+                {
+                    return Json(new { success = true, message = "Этап запущен в работу" });
+                }
+                else
+                {
+                    return Json(new { success = false, message = "Не удалось запустить этап. Проверьте предыдущие этапы." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получение статистики по станкам
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetMachineStatistics()
+        {
+            try
+            {
+                var machines = await _machineService.GetAllAsync();
+                var ganttData = await _stageService.GetAllStagesForGanttChart();
+
+                var result = machines.Select(machine =>
+                {
+                    var machineStages = ganttData.Where(s => s.MachineId == machine.Id).ToList();
+                    var currentStage = machineStages.FirstOrDefault(s => s.Status == "InProgress");
+
+                    return new
+                    {
+                        id = machine.Id,
+                        name = machine.Name,
+                        inventoryNumber = machine.InventoryNumber,
+                        machineTypeName = machine.MachineTypeName,
+                        priority = machine.Priority,
+                        status = currentStage != null ?
+                            (currentStage.IsSetup ? "Переналадка" : "В работе") :
+                            "Свободен",
+                        currentStage = currentStage != null ? new
+                        {
+                            id = currentStage.Id,
+                            stageName = currentStage.StageName,
+                            detailName = currentStage.DetailName,
+                            isSetup = currentStage.IsSetup,
+                            startTime = currentStage.StartTime
+                        } : null,
+                        queuedStages = machineStages.Count(s => s.Status == "Waiting" || s.Status == "Pending")
+                    };
+                });
+
+                return Json(result);
+            }
+            catch (Exception ex)
+            {
+                return Json(new List<object>());
+            }
+        }
+
+        #endregion
+
+        #region Batch Quick Actions
+
+        /// <summary>
+        /// Быстрое создание партии с автозапуском
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> QuickCreateBatch([FromBody] QuickBatchCreateDto dto)
+        {
+            try
+            {
+                // Создаем партию
+                var batchDto = new BatchCreateDto
+                {
+                    DetailId = dto.DetailId,
+                    Quantity = dto.Quantity,
+                    SubBatches = dto.SubBatches?.Select(sb => new SubBatchCreateDto
+                    {
+                        Quantity = sb.Quantity
+                    }).ToList() ?? new List<SubBatchCreateDto>()
+                };
+
+                var batchId = await _schedulerService.CreateBatchAsync(batchDto);
+
+                // Если включен автозапуск, пытаемся запустить первые этапы
+                if (dto.AutoStart)
+                {
+                    await _schedulerService.ScheduleSubBatchesAsync(batchId);
+
+                    // Пытаемся автоматически запустить готовые этапы
+                    var batch = await _batchService.GetByIdAsync(batchId);
+                    foreach (var subBatch in batch.SubBatches)
+                    {
+                        var firstStage = subBatch.StageExecutions?.FirstOrDefault();
+                        if (firstStage != null)
+                        {
+                            await _schedulerService.StartPendingStageAsync(firstStage.Id);
+                        }
+                    }
+                }
+
+                return Json(new
+                {
+                    success = true,
+                    message = "Партия создана и запущена в производство",
+                    batchId = batchId
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Получение краткой информации о партии
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetBatchSummary(int batchId)
+        {
+            try
+            {
+                var batch = await _batchService.GetByIdAsync(batchId);
+                if (batch == null)
+                    return NotFound();
+
+                var stageExecutions = await _batchService.GetStageExecutionsForBatchAsync(batchId);
+
+                var totalStages = stageExecutions.Count;
+                var completedStages = stageExecutions.Count(se => se.Status == "Completed");
+                var inProgressStages = stageExecutions.Count(se => se.Status == "InProgress");
+                var pendingStages = stageExecutions.Count(se => se.Status == "Pending" || se.Status == "Waiting");
+
+                return Json(new
+                {
+                    id = batch.Id,
+                    detailName = batch.DetailName,
+                    quantity = batch.Quantity,
+                    created = batch.CreatedUtc,
+                    totalStages = totalStages,
+                    completedStages = completedStages,
+                    inProgressStages = inProgressStages,
+                    pendingStages = pendingStages,
+                    completionPercent = totalStages > 0 ? Math.Round((double)completedStages / totalStages * 100, 1) : 0,
+                    status = completedStages == totalStages && totalStages > 0 ? "Завершено" :
+                             inProgressStages > 0 ? "В производстве" :
+                             completedStages > 0 ? "Частично выполнено" : "Не начато"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        #endregion
+
+
+    }
 }
