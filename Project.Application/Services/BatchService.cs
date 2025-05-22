@@ -38,11 +38,11 @@ namespace Project.Application.Services
                 DetailName = b.Detail?.Name ?? "",
                 Quantity = b.Quantity,
                 CreatedUtc = b.CreatedUtc,
-                SubBatches = b.SubBatches?.Select(sb => new SubBatchDto
+                SubBatches = b.SubBatches.Select(sb => new SubBatchDto
                 {
                     Id = sb.Id,
                     Quantity = sb.Quantity,
-                    StageExecutions = sb.StageExecutions?.Select(se => new StageExecutionDto
+                    StageExecutions = sb.StageExecutions.Select(se => new StageExecutionDto
                     {
                         Id = se.Id,
                         RouteStageId = se.RouteStageId,
@@ -53,10 +53,11 @@ namespace Project.Application.Services
                         StartTimeUtc = se.StartTimeUtc,
                         EndTimeUtc = se.EndTimeUtc,
                         IsSetup = se.IsSetup
-                    }).ToList() ?? new List<StageExecutionDto>()
-                }).ToList() ?? new List<SubBatchDto>()
+                    }).ToList()
+                }).ToList()
             }).ToList();
         }
+
 
         public async Task<BatchDto> GetByIdAsync(int id)
         {

@@ -46,25 +46,48 @@ namespace Project.Web.Controllers
                 var machineTypes = await _machineTypeService.GetAllAsync();
                 var machines = await _machineService.GetAllAsync();
                 var batches = await _batchService.GetAllAsync();
-                var ganttData = await _stageService.GetAllStagesForGanttChart();
-                var queueForecast = await _schedulerService.GetQueueForecastAsync();
+
+                // Получаем данные диаграммы Ганта (может быть пустым при первом запуске)
+                List<GanttStageDto> ganttData;
+                List<StageQueueDto> queueForecast;
+
+                try
+                {
+                    ganttData = await _stageService.GetAllStagesForGanttChart();
+                    queueForecast = await _schedulerService.GetQueueForecastAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Логируем ошибку, но не прерываем работу
+                    ganttData = new List<GanttStageDto>();
+                    queueForecast = new List<StageQueueDto>();
+                }
 
                 var viewModel = new MainDashboardViewModel
                 {
-                    Details = details,
-                    MachineTypes = machineTypes,
-                    Machines = machines,
-                    Batches = batches,
-                    GanttStages = ganttData,
-                    QueueItems = queueForecast
+                    Details = details ?? new List<DetailDto>(),
+                    MachineTypes = machineTypes ?? new List<MachineTypeDto>(),
+                    Machines = machines ?? new List<MachineDto>(),
+                    Batches = batches ?? new List<BatchDto>(),
+                    GanttStages = ganttData ?? new List<GanttStageDto>(),
+                    QueueItems = queueForecast ?? new List<StageQueueDto>()
                 };
 
                 return View(viewModel);
             }
             catch (Exception ex)
             {
-                // Логируем ошибку и возвращаем базовую модель
-                var emptyModel = new MainDashboardViewModel();
+                // Возвращаем пустую модель при ошибке
+                var emptyModel = new MainDashboardViewModel
+                {
+                    Details = new List<DetailDto>(),
+                    MachineTypes = new List<MachineTypeDto>(),
+                    Machines = new List<MachineDto>(),
+                    Batches = new List<BatchDto>(),
+                    GanttStages = new List<GanttStageDto>(),
+                    QueueItems = new List<StageQueueDto>()
+                };
+
                 ViewBag.ErrorMessage = $"Ошибка при загрузке данных: {ex.Message}";
                 return View(emptyModel);
             }

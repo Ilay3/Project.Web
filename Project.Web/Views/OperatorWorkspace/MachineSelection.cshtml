@@ -1,0 +1,68 @@
+﻿@using Project.Web.ViewModels
+@model List<MachineViewModel>
+@{
+    ViewData["Title"] = "Выбор станка";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Рабочее место оператора</h2>
+            <p class="lead">Выберите станок для работы</p>
+        </div>
+    </div>
+
+    <div class="row">
+        @foreach (var machine in Model)
+        {
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card machine-card h-100">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">@machine.Name</h5>
+                        <div class="card-text flex-grow-1">
+                            <p><strong>Инвентарный номер:</strong> @machine.InventoryNumber</p>
+                            <p><strong>Тип станка:</strong> @machine.MachineTypeName</p>
+                            <p><strong>Приоритет:</strong> @machine.Priority</p>
+                        </div>
+
+                        <div class="mt-3">
+                            <a href="@Url.Action("Index", new { machineId = machine.Id })"
+                               class="btn btn-primary btn-lg w-100">
+                                <i class="bi bi-play-fill"></i> Работать на этом станке
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-center p-5">
+            <i class="bi bi-tools" style="font-size: 4rem; color: #6c757d;"></i>
+            <h3 class="mt-3 text-muted">Станки не найдены</h3>
+            <p class="text-muted">Обратитесь к администратору для настройки станков</p>
+        </div>
+    }
+</div>
+
+<style>
+    .machine-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        cursor: pointer;
+    }
+
+        .machine-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .machine-card .btn {
+            transition: all 0.2s ease;
+        }
+
+        .machine-card:hover .btn {
+            transform: scale(1.05);
+        }
+</style>

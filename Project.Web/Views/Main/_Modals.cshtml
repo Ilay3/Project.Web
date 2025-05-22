@@ -1,0 +1,315 @@
+﻿<!-- Модальное окно для создания/редактирования детали -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalLabel">Деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="detailForm">
+                    <input type="hidden" id="detailId">
+                    <div class="mb-3">
+                        <label for="detailNumber" class="form-label">Номер детали</label>
+                        <input type="text" class="form-control" id="detailNumber" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="detailName" class="form-label">Название детали</label>
+                        <input type="text" class="form-control" id="detailName" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveDetailBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для создания/редактирования типа станка -->
+<div class="modal fade" id="machineTypeModal" tabindex="-1" aria-labelledby="machineTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="machineTypeModalLabel">Тип станка</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="machineTypeForm">
+                    <input type="hidden" id="machineTypeId">
+                    <div class="mb-3">
+                        <label for="machineTypeName" class="form-label">Название типа станка</label>
+                        <input type="text" class="form-control" id="machineTypeName" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveMachineTypeBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для создания/редактирования станка -->
+<div class="modal fade" id="machineModal" tabindex="-1" aria-labelledby="machineModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="machineModalLabel">Станок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="machineForm">
+                    <input type="hidden" id="machineId">
+                    <div class="mb-3">
+                        <label for="machineName" class="form-label">Название станка</label>
+                        <input type="text" class="form-control" id="machineName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="machineInventoryNumber" class="form-label">Инвентарный номер</label>
+                        <input type="text" class="form-control" id="machineInventoryNumber" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="machineMachineTypeId" class="form-label">Тип станка</label>
+                        <select class="form-select" id="machineMachineTypeId" required>
+                            <option value="">Выберите тип станка...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="machinePriority" class="form-label">Приоритет</label>
+                        <input type="number" class="form-control" id="machinePriority" min="0" value="0">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveMachineBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для создания партии -->
+<div class="modal fade" id="createBatchModal" tabindex="-1" aria-labelledby="createBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createBatchModalLabel">Создать партию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="batchForm">
+                    <div class="mb-3">
+                        <label for="batchDetailSelect" class="form-label">Деталь</label>
+                        <select class="form-select" id="batchDetailSelect" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="batchQuantity" class="form-label">Количество</label>
+                        <input type="number" class="form-control" id="batchQuantity" min="1" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="splitBatchCheck">
+                        <label class="form-check-label" for="splitBatchCheck">
+                            Разделить на подпартии
+                        </label>
+                    </div>
+                    <div id="subBatchesContainer" class="d-none">
+                        <div class="mb-3">
+                            <label for="subBatchCount" class="form-label">Количество подпартий</label>
+                            <input type="number" class="form-control" id="subBatchCount" min="2" value="2">
+                        </div>
+                        <div id="subBatchQuantities">
+                            <!-- Поля для ввода количества в подпартиях будут добавлены динамически -->
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="createBatchBtn">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для управления этапом -->
+<div class="modal fade" id="stageControlModal" tabindex="-1" aria-labelledby="stageControlModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stageControlModalLabel">Управление этапом</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="stageInfo" class="mb-3">
+                    <!-- Информация об этапе -->
+                </div>
+                <div id="stageActions">
+                    <!-- Кнопки управления этапом -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления времени переналадки -->
+<div class="modal fade" id="setupTimeModal" tabindex="-1" aria-labelledby="setupTimeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="setupTimeModalLabel">Время переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="setupTimeForm">
+                    <div class="mb-3">
+                        <label for="setupMachineId" class="form-label">Станок</label>
+                        <select class="form-select" id="setupMachineId" required>
+                            <option value="">Выберите станок...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="setupFromDetailId" class="form-label">С детали</label>
+                        <select class="form-select" id="setupFromDetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="setupToDetailId" class="form-label">На деталь</label>
+                        <select class="form-select" id="setupToDetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="setupTime" class="form-label">Время переналадки (часы)</label>
+                        <input type="number" class="form-control" id="setupTime" step="0.01" min="0" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="addSetupTimeBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для маршрута детали -->
+<div class="modal fade" id="routeModal" tabindex="-1" aria-labelledby="routeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="routeModalLabel">Маршрут детали</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="routeContent">
+                    <div class="text-center p-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                        <p class="mt-2">Загрузка маршрута...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-primary" id="editRouteBtn" style="display: none;">Редактировать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Обработчики для модальных окон
+    $(document).ready(function() {
+        console.log('Modals script loaded');
+
+        // Обработчики для кнопок "Добавить" - используем click напрямую
+        $('.btn[data-bs-target="#detailModal"]').on('click', function(e) {
+            e.preventDefault();
+            if (typeof addDetail === 'function') {
+                addDetail();
+            } else {
+                console.error('addDetail function not found');
+            }
+        });
+
+        $('.btn[data-bs-target="#machineTypeModal"]').on('click', function(e) {
+            e.preventDefault();
+            if (typeof addMachineType === 'function') {
+                addMachineType();
+            } else {
+                console.error('addMachineType function not found');
+            }
+        });
+
+        $('.btn[data-bs-target="#machineModal"]').on('click', function(e) {
+            e.preventDefault();
+            if (typeof addMachine === 'function') {
+                addMachine();
+            } else {
+                console.error('addMachine function not found');
+            }
+        });
+
+        $('.btn[data-bs-target="#setupTimeModal"]').on('click', function(e) {
+            e.preventDefault();
+            $('#setupTimeModal').modal('show');
+        });
+
+        // Очистка форм при закрытии модальных окон
+        $('#detailModal').on('hidden.bs.modal', function () {
+            clearDetailForm();
+        });
+
+        $('#machineTypeModal').on('hidden.bs.modal', function () {
+            clearMachineTypeForm();
+        });
+
+        $('#machineModal').on('hidden.bs.modal', function () {
+            clearMachineForm();
+        });
+
+        $('#setupTimeModal').on('hidden.bs.modal', function () {
+            clearSetupTimeForm();
+        });
+    });
+
+    // Вспомогательные функции очистки форм
+    function clearDetailForm() {
+        $('#detailId').val('');
+        $('#detailNumber').val('');
+        $('#detailName').val('');
+        $('#detailModalLabel').text('Деталь');
+    }
+
+    function clearMachineTypeForm() {
+        $('#machineTypeId').val('');
+        $('#machineTypeName').val('');
+        $('#machineTypeModalLabel').text('Тип станка');
+    }
+
+    function clearMachineForm() {
+        $('#machineId').val('');
+        $('#machineName').val('');
+        $('#machineInventoryNumber').val('');
+        $('#machineMachineTypeId').val('');
+        $('#machinePriority').val('0');
+        $('#machineModalLabel').text('Станок');
+    }
+
+    function clearSetupTimeForm() {
+        $('#setupMachineId').val('');
+        $('#setupFromDetailId').val('');
+        $('#setupToDetailId').val('');
+        $('#setupTime').val('');
+    }
+</script>

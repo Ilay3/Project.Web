@@ -228,18 +228,28 @@
 @await Html.PartialAsync("_Modals")
 
 @section Scripts {
-    <script>
-        // Инициализация данных из модели
-        window.dashboardData = {
-            details: @Html.Raw(Json.Serialize(Model.Details)),
-            machineTypes: @Html.Raw(Json.Serialize(Model.MachineTypes)),
-            machines: @Html.Raw(Json.Serialize(Model.Machines)),
-            batches: @Html.Raw(Json.Serialize(Model.Batches)),
-            ganttStages: @Html.Raw(Json.Serialize(Model.GanttStages)),
-            queueItems: @Html.Raw(Json.Serialize(Model.QueueItems))
-        };
-    </script>
-    <script src="~/js/main-dashboard.js"></script>
-    <script src="~/js/gantt-chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        // Передаем данные из модели в JavaScript
+        window.initialData = {
+            details: @Html.Raw(Json.Serialize(Model.Details ?? new List<DetailDto>())),
+            machineTypes: @Html.Raw(Json.Serialize(Model.MachineTypes ?? new List<MachineTypeDto>())),
+            machines: @Html.Raw(Json.Serialize(Model.Machines ?? new List<MachineDto>())),
+            batches: @Html.Raw(Json.Serialize(Model.Batches ?? new List<BatchDto>())),
+            ganttStages: @Html.Raw(Json.Serialize(Model.GanttStages ?? new List<GanttStageDto>())),
+            queueItems: @Html.Raw(Json.Serialize(Model.QueueItems ?? new List<StageQueueDto>()))
+        };
+
+        // Ждем полной загрузки DOM и jQuery
+        $(document).ready(function() {
+            console.log('Document ready, initialData:', window.initialData);
+        });
+        console.log(window.initialData.details);
+
+    </script>
+
+    <script src="~/js/main-dashboard.js"></script>
 }

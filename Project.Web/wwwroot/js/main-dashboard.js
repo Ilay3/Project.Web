@@ -10,6 +10,21 @@ let dashboardData = {
 
 // Инициализация при загрузке страницы
 $(document).ready(function () {
+    console.log('jQuery loaded, initializing dashboard...');
+
+    // Проверяем, что данные переданы
+    if (typeof window.initialData === 'undefined') {
+        console.warn('initialData not found, using empty data');
+        window.initialData = {
+            details: [],
+            machineTypes: [],
+            machines: [],
+            batches: [],
+            ganttStages: [],
+            queueItems: []
+        };
+    }
+
     initializeDashboard();
 
     // Автоматическое обновление каждые 30 секунд
@@ -18,27 +33,8 @@ $(document).ready(function () {
 
 // Инициализация главной панели
 function initializeDashboard() {
-    loadInitialData();
     setupEventHandlers();
-}
-
-// Загрузка начальных данных
-function loadInitialData() {
-    // Получаем данные с сервера (они уже переданы в модели)
-    dashboardData.details = @Html.Raw(Json.Serialize(Model.Details));
-    dashboardData.machineTypes = @Html.Raw(Json.Serialize(Model.MachineTypes));
-    dashboardData.machines = @Html.Raw(Json.Serialize(Model.Machines));
-    dashboardData.batches = @Html.Raw(Json.Serialize(Model.Batches));
-    dashboardData.ganttStages = @Html.Raw(Json.Serialize(Model.GanttStages));
-    dashboardData.queueItems = @Html.Raw(Json.Serialize(Model.QueueItems));
-
-    // Рендерим компоненты
-    renderGanttChart();
-    renderQueue();
-    renderBatches();
-    renderMachines();
-    renderDetails();
-    renderMachineTypes();
+    loadInitialData();
 }
 
 // Настройка обработчиков событий
@@ -79,6 +75,18 @@ function setupEventHandlers() {
                 break;
         }
     });
+
+    // Обработчики модальных окон
+    $('#saveDetailBtn').on('click', saveDetail);
+    $('#saveMachineTypeBtn').on('click', saveMachineType);
+    $('#saveMachineBtn').on('click', saveMachine);
+    $('#createBatchBtn').on('click', createBatch);
+    $('#addSetupTimeBtn').on('click', addSetupTime);
+}
+
+// Загрузка начальных данных
+function loadInitialData() {
+    refreshData();
 }
 
 // Обновление данных с сервера
@@ -86,9 +94,9 @@ function refreshData() {
     $.get('/Main/RefreshData')
         .done(function (response) {
             if (response.success) {
-                dashboardData.ganttStages = response.ganttStages;
-                dashboardData.queueItems = response.queueItems;
-                dashboardData.batches = response.batches;
+                dashboardData.ganttStages = response.ganttStages || [];
+                dashboardData.queueItems = response.queueItems || [];
+                dashboardData.batches = response.batches || [];
 
                 // Обновляем активную вкладку
                 var activeTab = $('.nav-link.active').attr('data-bs-target');
@@ -110,6 +118,36 @@ function refreshData() {
         .fail(function () {
             showNotification('Ошибка при обновлении данных', 'error');
         });
+
+    // Загружаем справочные данные
+    loadReferenceData();
+}
+
+// Загрузка справочных данных
+function loadReferenceData() {
+    // Загружаем детали
+    $.get('/Detail/GetDetails')
+        .done(function (data) {
+            dashboardData.details = data || [];
+            renderDetails();
+            populateDetailSelects();
+        });
+
+    // Загружаем типы станков
+    $.get('/api/MachineTypes')
+        .done(function (data) {
+            dashboardData.machineTypes = data || [];
+            renderMachineTypes();
+            populateMachineTypeSelects();
+        });
+
+    // Загружаем станки
+    $.get('/api/Machines')
+        .done(function (data) {
+            dashboardData.machines = data || [];
+            renderMachines();
+            populateMachineSelects();
+        });
 }
 
 // Отображение диаграммы Ганта
@@ -117,7 +155,7 @@ function renderGanttChart() {
     const container = $('#gantt-container');
     container.empty();
 
-    if (dashboardData.ganttStages.length === 0) {
+    if (!dashboardData.ganttStages || dashboardData.ganttStages.length === 0) {
         container.html('<div class="text-center p-5"><i class="bi bi-calendar3" style="font-size: 3rem;"></i><h4 class="mt-3">Нет активных этапов</h4></div>');
         return;
     }
@@ -168,7 +206,7 @@ function renderGanttChart() {
 function renderQueue() {
     const container = $('#queue-container');
 
-    if (dashboardData.queueItems.length === 0) {
+    if (!dashboardData.queueItems || dashboardData.queueItems.length === 0) {
         container.html('<div class="text-center p-5"><i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i><h4 class="mt-3">Очередь пуста</h4></div>');
         return;
     }
@@ -207,11 +245,16 @@ function renderBatches() {
     const tbody = $('#batches-table tbody');
     tbody.empty();
 
+    if (!dashboardData.batches || dashboardData.batches.length === 0) {
+        tbody.append('<tr><td colspan="6" class="text-center">Нет партий</td></tr>');
+        return;
+    }
+
     dashboardData.batches.forEach(batch => {
-        const totalStages = batch.subBatches.reduce((sum, sb) => sum + (sb.stageExecutions?.length || 0), 0);
-        const completedStages = batch.subBatches.reduce((sum, sb) => {
+        const totalStages = batch.subBatches?.reduce((sum, sb) => sum + (sb.stageExecutions?.length || 0), 0) || 0;
+        const completedStages = batch.subBatches?.reduce((sum, sb) => {
             return sum + (sb.stageExecutions?.filter(se => se.status === 'Completed').length || 0);
-        }, 0);
+        }, 0) || 0;
 
         const progress = totalStages > 0 ? Math.round((completedStages / totalStages) * 100) : 0;
         const statusText = progress === 100 ? 'Завершено' : progress > 0 ? 'В работе' : 'Не начато';
@@ -243,9 +286,14 @@ function renderBatches() {
 function renderMachines() {
     const container = $('#machines-container');
 
+    if (!dashboardData.machines || dashboardData.machines.length === 0) {
+        container.html('<div class="text-center p-5"><i class="bi bi-tools" style="font-size: 3rem;"></i><h4 class="mt-3">Нет станков</h4></div>');
+        return;
+    }
+
     let html = '<div class="row">';
     dashboardData.machines.forEach(machine => {
-        const currentStage = dashboardData.ganttStages.find(s => s.machineId === machine.id && s.status === 'InProgress');
+        const currentStage = dashboardData.ganttStages?.find(s => s.machineId === machine.id && s.status === 'InProgress');
         const statusText = currentStage ? (currentStage.isSetup ? 'Переналадка' : 'В работе') : 'Свободен';
         const statusClass = currentStage ? (currentStage.isSetup ? 'bg-info' : 'bg-primary') : 'bg-success';
 
@@ -280,6 +328,11 @@ function renderMachines() {
 function renderDetails() {
     const container = $('#details-container');
 
+    if (!dashboardData.details || dashboardData.details.length === 0) {
+        container.html('<div class="text-center p-5"><i class="bi bi-box" style="font-size: 3rem;"></i><h4 class="mt-3">Нет деталей</h4></div>');
+        return;
+    }
+
     let html = '<div class="list-group">';
     dashboardData.details.forEach(detail => {
         html += `<div class="list-group-item d-flex justify-content-between align-items-center">
@@ -306,6 +359,11 @@ function renderDetails() {
 function renderMachineTypes() {
     const container = $('#machine-types-container');
 
+    if (!dashboardData.machineTypes || dashboardData.machineTypes.length === 0) {
+        container.html('<div class="text-center p-5"><i class="bi bi-gear" style="font-size: 3rem;"></i><h4 class="mt-3">Нет типов станков</h4></div>');
+        return;
+    }
+
     let html = '<div class="list-group">';
     dashboardData.machineTypes.forEach(type => {
         html += `<div class="list-group-item d-flex justify-content-between align-items-center">
@@ -320,9 +378,26 @@ function renderMachineTypes() {
     container.html(html);
 }
 
-// === МОДАЛЬНЫЕ ОКНА И ДЕЙСТВИЯ ===
+// === ФУНКЦИИ УПРАВЛЕНИЯ ===
 
-// Сохранение детали
+// Работа с деталями
+function addDetail() {
+    clearDetailForm();
+    $('#detailModalLabel').text('Добавить деталь');
+    $('#detailModal').modal('show');
+}
+
+function editDetail(id) {
+    const detail = dashboardData.details.find(d => d.id === id);
+    if (detail) {
+        $('#detailId').val(detail.id);
+        $('#detailNumber').val(detail.number);
+        $('#detailName').val(detail.name);
+        $('#detailModalLabel').text('Редактировать деталь');
+        $('#detailModal').modal('show');
+    }
+}
+
 function saveDetail() {
     const id = $('#detailId').val();
     const data = {
@@ -330,6 +405,11 @@ function saveDetail() {
         number: $('#detailNumber').val(),
         name: $('#detailName').val()
     };
+
+    if (!data.number || !data.name) {
+        showNotification('Заполните все поля', 'error');
+        return;
+    }
 
     const url = id ? '/Main/UpdateDetail' : '/Main/CreateDetail';
     const method = id ? 'PUT' : 'POST';
@@ -342,13 +422,143 @@ function saveDetail() {
         success: function (response) {
             if (response.success) {
                 $('#detailModal').modal('hide');
-                refreshData();
+                loadReferenceData();
                 showNotification(response.message, 'success');
             } else {
                 showNotification(response.message, 'error');
             }
+        },
+        error: function () {
+            showNotification('Ошибка при сохранении детали', 'error');
         }
     });
+}
+
+function clearDetailForm() {
+    $('#detailId').val('');
+    $('#detailNumber').val('');
+    $('#detailName').val('');
+}
+
+// Работа с типами станков
+function addMachineType() {
+    clearMachineTypeForm();
+    $('#machineTypeModalLabel').text('Добавить тип станка');
+    $('#machineTypeModal').modal('show');
+}
+
+function editMachineType(id) {
+    const type = dashboardData.machineTypes.find(t => t.id === id);
+    if (type) {
+        $('#machineTypeId').val(type.id);
+        $('#machineTypeName').val(type.name);
+        $('#machineTypeModalLabel').text('Редактировать тип станка');
+        $('#machineTypeModal').modal('show');
+    }
+}
+
+function saveMachineType() {
+    const id = $('#machineTypeId').val();
+    const data = {
+        id: id || 0,
+        name: $('#machineTypeName').val()
+    };
+
+    if (!data.name) {
+        showNotification('Введите название типа станка', 'error');
+        return;
+    }
+
+    const url = id ? '/Main/UpdateMachineType' : '/Main/CreateMachineType';
+    const method = id ? 'PUT' : 'POST';
+
+    $.ajax({
+        url: url,
+        method: method,
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function (response) {
+            if (response.success) {
+                $('#machineTypeModal').modal('hide');
+                loadReferenceData();
+                showNotification(response.message, 'success');
+            } else {
+                showNotification(response.message, 'error');
+            }
+        },
+        error: function () {
+            showNotification('Ошибка при сохранении типа станка', 'error');
+        }
+    });
+}
+
+function clearMachineTypeForm() {
+    $('#machineTypeId').val('');
+    $('#machineTypeName').val('');
+}
+
+// Работа со станками
+function addMachine() {
+    clearMachineForm();
+    $('#machineModal').modal('show');
+}
+
+function editMachine(id) {
+    const machine = dashboardData.machines.find(m => m.id === id);
+    if (machine) {
+        $('#machineId').val(machine.id);
+        $('#machineName').val(machine.name);
+        $('#machineInventoryNumber').val(machine.inventoryNumber);
+        $('#machineMachineTypeId').val(machine.machineTypeId);
+        $('#machinePriority').val(machine.priority);
+        $('#machineModal').modal('show');
+    }
+}
+
+function saveMachine() {
+    const id = $('#machineId').val();
+    const data = {
+        id: id || 0,
+        name: $('#machineName').val(),
+        inventoryNumber: $('#machineInventoryNumber').val(),
+        machineTypeId: parseInt($('#machineMachineTypeId').val()),
+        priority: parseInt($('#machinePriority').val()) || 0
+    };
+
+    if (!data.name || !data.inventoryNumber || !data.machineTypeId) {
+        showNotification('Заполните все обязательные поля', 'error');
+        return;
+    }
+
+    const url = id ? '/Main/UpdateMachine' : '/Main/CreateMachine';
+    const method = id ? 'PUT' : 'POST';
+
+    $.ajax({
+        url: url,
+        method: method,
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function (response) {
+            if (response.success) {
+                $('#machineModal').modal('hide');
+                loadReferenceData();
+                showNotification(response.message, 'success');
+            } else {
+                showNotification(response.message, 'error');
+            }
+        },
+        error: function () {
+            showNotification('Ошибка при сохранении станка', 'error');
+        }
+    });
+}
+
+function clearMachineForm() {
+    $('#machineId').val('');
+    $('#machineName').val('');
+    $('#machineInventoryNumber').val('');
+    $('#machineMachineTypeId').val('');
+    $('#machinePriority').val('0');
 }
 
 // Создание партии
@@ -357,6 +567,11 @@ function createBatch() {
     const quantity = parseInt($('#batchQuantity').val());
     const splitBatch = $('#splitBatchCheck').is(':checked');
 
+    if (!detailId || !quantity || quantity <= 0) {
+        showNotification('Заполните все поля корректно', 'error');
+        return;
+    }
+
     const data = {
         detailId: parseInt(detailId),
         quantity: quantity,
@@ -364,12 +579,19 @@ function createBatch() {
     };
 
     if (splitBatch) {
+        let totalSubQuantity = 0;
         $('.subBatchQuantity').each(function () {
-            const qty = parseInt($(this).val());
+            const qty = parseInt($(this).val()) || 0;
             if (qty > 0) {
                 data.subBatches.push({ quantity: qty });
+                totalSubQuantity += qty;
             }
         });
+
+        if (totalSubQuantity !== quantity) {
+            showNotification('Сумма подпартий должна равняться общему количеству', 'error');
+            return;
+        }
     }
 
     $.ajax({
@@ -382,14 +604,88 @@ function createBatch() {
                 $('#createBatchModal').modal('hide');
                 refreshData();
                 showNotification(response.message, 'success');
+                clearBatchForm();
             } else {
                 showNotification(response.message, 'error');
             }
+        },
+        error: function () {
+            showNotification('Ошибка при создании партии', 'error');
         }
     });
 }
 
-// Управление этапом
+function clearBatchForm() {
+    $('#batchDetailSelect').val('');
+    $('#batchQuantity').val('');
+    $('#splitBatchCheck').prop('checked', false);
+    $('#subBatchesContainer').addClass('d-none');
+    $('#subBatchQuantities').empty();
+}
+
+// Времена переналадки
+function addSetupTime() {
+    const data = {
+        machineId: parseInt($('#setupMachineId').val()),
+        fromDetailId: parseInt($('#setupFromDetailId').val()),
+        toDetailId: parseInt($('#setupToDetailId').val()),
+        time: parseFloat($('#setupTime').val())
+    };
+
+    if (!data.machineId || !data.fromDetailId || !data.toDetailId || !data.time || data.time <= 0) {
+        showNotification('Заполните все поля корректно', 'error');
+        return;
+    }
+
+    if (data.fromDetailId === data.toDetailId) {
+        showNotification('Деталь "откуда" и "куда" не могут быть одинаковыми', 'error');
+        return;
+    }
+
+    $.ajax({
+        url: '/Main/CreateSetupTime',
+        method: 'POST',
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function (response) {
+            if (response.success) {
+                $('#setupTimeModal').modal('hide');
+                showNotification(response.message, 'success');
+                clearSetupTimeForm();
+                loadSetupTimes();
+            } else {
+                showNotification(response.message, 'error');
+            }
+        },
+        error: function () {
+            showNotification('Ошибка при добавлении времени переналадки', 'error');
+        }
+    });
+}
+
+function clearSetupTimeForm() {
+    $('#setupMachineId').val('');
+    $('#setupFromDetailId').val('');
+    $('#setupToDetailId').val('');
+    $('#setupTime').val('');
+}
+
+function loadSetupTimes() {
+    $.get('/Main/GetSetupTimes')
+        .done(function (response) {
+            if (response.success) {
+                // Обновляем таблицу времен переналадки
+                renderSetupTimes(response.data);
+            }
+        });
+}
+
+function renderSetupTimes(setupTimes) {
+    // Здесь можно добавить отображение таблицы времен переналадки
+    console.log('Setup times:', setupTimes);
+}
+
+// Управление этапами
 function showStageControl(stageId) {
     const stage = dashboardData.ganttStages.find(s => s.id === stageId);
     if (!stage) return;
@@ -450,7 +746,45 @@ function executeStageAction(url, data, successMessage) {
             } else {
                 showNotification(response.message, 'error');
             }
+        })
+        .fail(function () {
+            showNotification('Ошибка при выполнении операции', 'error');
         });
+}
+
+// Заполнение выпадающих списков
+function populateDetailSelects() {
+    const selects = ['#batchDetailSelect', '#setupFromDetailId', '#setupToDetailId'];
+
+    selects.forEach(selector => {
+        const $select = $(selector);
+        $select.empty();
+        $select.append('<option value="">Выберите деталь...</option>');
+
+        dashboardData.details.forEach(detail => {
+            $select.append(`<option value="${detail.id}">${detail.name} (${detail.number})</option>`);
+        });
+    });
+}
+
+function populateMachineTypeSelects() {
+    const $select = $('#machineMachineTypeId');
+    $select.empty();
+    $select.append('<option value="">Выберите тип станка...</option>');
+
+    dashboardData.machineTypes.forEach(type => {
+        $select.append(`<option value="${type.id}">${type.name}</option>`);
+    });
+}
+
+function populateMachineSelects() {
+    const $select = $('#setupMachineId');
+    $select.empty();
+    $select.append('<option value="">Выберите станок...</option>');
+
+    dashboardData.machines.forEach(machine => {
+        $select.append(`<option value="${machine.id}">${machine.name} (${machine.inventoryNumber})</option>`);
+    });
 }
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
@@ -522,4 +856,25 @@ function generateSubBatchInputs() {
             `);
         }
     }
+}
+
+// Заглушки для других функций
+function showBatchDetails(batchId) {
+    showNotification('Функция в разработке', 'info');
+}
+
+function showRouteModal(detailId) {
+    showNotification('Функция в разработке', 'info');
+}
+
+function showMachineWorkspace(machineId) {
+    window.location.href = `/OperatorWorkspace?machineId=${machineId}`;
+}
+
+function prioritizeStage(stageId, machineId) {
+    showNotification('Функция в разработке', 'info');
+}
+
+function showReassignModal(stageId) {
+    showNotification('Функция в разработке', 'info');
 }
