@@ -123,6 +123,15 @@
         }
 
         function createStageElement(index, name, order, machineTypeId, normTime, setupTime, stageType) {
+            // Обеспечиваем корректные значения по умолчанию
+            name = name || '';
+            order = order || 1;
+            machineTypeId = machineTypeId || '';
+            normTime = (normTime !== undefined && normTime !== null && normTime !== '') ? parseFloat(normTime) : 1.0;
+            setupTime = (setupTime !== undefined && setupTime !== null && setupTime !== '') ? parseFloat(setupTime) : 0.0;
+            stageType = stageType || 'Основная';
+
+            // Формируем опции для типов станков
             let machineTypeOptions = '<option value="">Выберите тип станка...</option>';
             machineTypes.forEach(mt => {
                 const selected = mt.id == machineTypeId ? 'selected' : '';
@@ -200,15 +209,54 @@
             });
         }
 
+        // Валидация числовых полей перед отправкой
+        function validateNumericFields() {
+            let isValid = true;
+            $('.stage-item input[type="number"]').each(function() {
+                const value = $(this).val().trim();
+                if (value === '' || isNaN(parseFloat(value)) || parseFloat(value) < 0) {
+                    $(this).addClass('is-invalid');
+                    isValid = false;
+                } else {
+                    $(this).removeClass('is-invalid');
+                }
+            });
+            return isValid;
+        }
+
         $(document).ready(function() {
             // Валидация формы
             $('#route-form').on('submit', function(e) {
+                // Проверяем наличие этапов
                 if ($('.stage-item').length === 0) {
                     alert('Добавьте хотя бы один этап в маршрут');
                     e.preventDefault();
                     return false;
                 }
+
+                // Валидируем числовые поля
+                if (!validateNumericFields()) {
+                    alert('Проверьте правильность заполнения числовых полей');
+                    e.preventDefault();
+                    return false;
+                }
+
                 return true;
+            });
+
+            // Валидация числовых полей в режиме реального времени
+            $(document).on('blur', '.stage-item input[type="number"]', function() {
+                const value = $(this).val().trim();
+                if (value === '' || isNaN(parseFloat(value)) || parseFloat(value) < 0) {
+                    $(this).addClass('is-invalid');
+                } else {
+                    $(this).removeClass('is-invalid');
+                }
+            });
+
+            // Очистка ошибок при вводе
+            $(document).on('input', '.stage-item input[type="number"]', function() {
+                $(this).removeClass('is-invalid');
             });
         });
     </script>
