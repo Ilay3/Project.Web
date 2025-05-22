@@ -135,9 +135,46 @@ namespace Project.Infrastructure.Data
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.IsSetup);
 
-            // Индекс для быстрого поиска по подпартии
             modelBuilder.Entity<StageExecution>()
                 .HasIndex(se => se.SubBatchId);
+
+            // Индекс для планирования и очереди
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.ScheduledStartTimeUtc);
+
+            // Индекс для поиска обработанных этапов
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.IsProcessedByScheduler);
+
+            // Индекс для поиска по времени изменения статуса
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => se.StatusChangedTimeUtc);
+
+            // Составной индекс для поиска этапов в очереди по станку
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => new { se.MachineId, se.Status, se.QueuePosition });
+
+            // Составной индекс для поиска по приоритету
+            modelBuilder.Entity<StageExecution>()
+                .HasIndex(se => new { se.Status, se.Priority, se.ScheduledStartTimeUtc });
+
+            // Настройка длины строковых полей
+            modelBuilder.Entity<StageExecution>()
+                .Property(se => se.OperatorId)
+                .HasMaxLength(50);
+
+            modelBuilder.Entity<StageExecution>()
+                .Property(se => se.ReasonNote)
+                .HasMaxLength(500);
+
+            modelBuilder.Entity<StageExecution>()
+                .Property(se => se.LastErrorMessage)
+                .HasMaxLength(1000);
+
+            modelBuilder.Entity<StageExecution>()
+                .Property(se => se.DeviceId)
+                .HasMaxLength(100);
+
         }
     }
 }

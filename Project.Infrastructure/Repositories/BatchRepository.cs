@@ -263,15 +263,15 @@ namespace Project.Infrastructure.Repositories
                     .ThenInclude(rs => rs.MachineType)
                 .Include(se => se.Machine)
                 .Where(se => se.Status == StageExecutionStatus.Pending)
-                .OrderBy(se => se.SubBatch.Batch.CreatedUtc) // Сначала старые партии
-                .ThenBy(se => se.RouteStage.Order) // Затем по порядку этапов
+                .OrderBy(se => se.SubBatch.Batch.CreatedUtc)
+                .ThenBy(se => se.RouteStage.Order)
                 .ToListAsync();
         }
+
 
         // Получение недавно завершенных этапов, которые еще не обработаны системой планирования
         public async Task<List<StageExecution>> GetRecentlyCompletedStagesAsync()
         {
-            // Получаем этапы, завершенные в течение последнего часа
             var oneHourAgo = DateTime.UtcNow.AddHours(-1);
 
             return await _db.StageExecutions
@@ -282,10 +282,11 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.Machine)
                 .Where(se => se.Status == StageExecutionStatus.Completed &&
                             se.EndTimeUtc >= oneHourAgo &&
-                            !se.IsProcessedByScheduler) // Добавим новое поле в сущность
+                            !se.IsProcessedByScheduler)
                 .OrderBy(se => se.EndTimeUtc)
                 .ToListAsync();
         }
+
 
         // Получение следующих доступных этапов для указанной подпартии
         public async Task<List<StageExecution>> GetNextAvailableStagesForSubBatchAsync(int subBatchId)
@@ -324,10 +325,10 @@ namespace Project.Infrastructure.Repositories
 
             if (stage == null) return new List<Machine>();
 
-            // Получаем все станки нужного типа
+            // Получаем требуемый тип станка
             var machineTypeId = stage.RouteStage.MachineTypeId;
 
-            // Получаем ID станков, которые сейчас заняты
+            // Получаем ID занятых станков
             var busyMachineIds = await _db.StageExecutions
                 .Where(se => se.Status == StageExecutionStatus.InProgress && se.MachineId.HasValue)
                 .Select(se => se.MachineId.Value)

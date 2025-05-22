@@ -4,76 +4,200 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Система управления производством</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/Project.Web.styles.css" asp-append-version="true" />
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="~/css/main-dashboard.css" asp-append-version="true" />
 </head>
 <body>
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+        <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
             <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">
-                    <i class="bi bi-gear-fill me-2"></i>Управление производством
+                <a class="navbar-brand" href="/">
+                    <i class="bi bi-gear-fill"></i> Система управления производством
                 </a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="Home" asp-action="Index">
-                                <i class="bi bi-house-door"></i> Главная
+                            <a class="nav-link" href="/">
+                                <i class="bi bi-house"></i> Главная
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="Gantt" asp-action="Index">
-                                <i class="bi bi-calendar3"></i> Диаграмма Ганта
+                            <a class="nav-link" href="/OperatorWorkspace">
+                                <i class="bi bi-tools"></i> Рабочие места
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="Batch" asp-action="Index">
-                                <i class="bi bi-stack"></i> Партии
+                            <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#setupTimeModal">
+                                <i class="bi bi-clock"></i> Переналадки
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="History" asp-action="Index">
+                            <a class="nav-link" href="/History">
                                 <i class="bi bi-clock-history"></i> История
                             </a>
                         </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle text-dark" href="#" id="navbarDropdown" role="button"
-                               data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="bi bi-journal-text"></i> Справочники
-                            </a>
-                            <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                                <li><a class="dropdown-item" asp-controller="Detail" asp-action="Index">Детали</a></li>
-                                <li><a class="dropdown-item" asp-controller="MachineType" asp-action="Index">Типы станков</a></li>
-                                <li><a class="dropdown-item" asp-controller="Machine" asp-action="Index">Станки</a></li>
-                                <li><a class="dropdown-item" asp-controller="Route" asp-action="Index">Маршруты</a></li>
-                                <li><a class="dropdown-item" asp-controller="SetupTime" asp-action="Index">Время переналадки</a></li>
-                            </ul>
+                    </ul>
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <span class="navbar-text">
+                                <i class="bi bi-clock"></i> <span id="current-time"></span>
+                            </span>
                         </li>
                     </ul>
                 </div>
             </div>
         </nav>
     </header>
-    <div class="container">
+
+    <div class="container-fluid">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
+    <footer class="bg-light text-center py-3 mt-5">
         <div class="container">
-            &copy; 2025 - Система управления производством
+            <span class="text-muted">
+                © @DateTime.Now.Year Система управления производством
+            </span>
         </div>
     </footer>
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    <!-- Общие скрипты -->
+    <script>
+        // Обновление времени в навбаре
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString();
+        }
+
+        // Обновляем время каждую секунду
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Глобальная функция для показа уведомлений
+        window.showNotification = function(message, type = 'info') {
+            const alertClass = {
+                'success': 'alert-success',
+                'error': 'alert-danger',
+                'warning': 'alert-warning',
+                'info': 'alert-info'
+            }[type] || 'alert-info';
+
+            const notification = $(`
+                <div class="alert ${alertClass} alert-dismissible fade show position-fixed"
+                     style="top: 80px; right: 20px; z-index: 9999; min-width: 300px;">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `);
+
+            $('body').append(notification);
+
+            // Автоматически скрыть через 5 секунд
+            setTimeout(() => {
+                notification.alert('close');
+            }, 5000);
+        };
+
+        // Глобальная функция для подтверждения действий
+        window.confirmAction = function(message, callback) {
+            if (confirm(message)) {
+                callback();
+            }
+        };
+
+        // Обработка AJAX ошибок
+        $(document).ajaxError(function(event, xhr, settings, thrownError) {
+            console.error('AJAX Error:', thrownError);
+            showNotification('Произошла ошибка при выполнении запроса', 'error');
+        });
+
+        // Показать индикатор загрузки при AJAX запросах
+        $(document).ajaxStart(function() {
+            $('body').addClass('loading');
+        }).ajaxStop(function() {
+            $('body').removeClass('loading');
+        });
+    </script>
+
     @await RenderSectionAsync("Scripts", required: false)
+
+    <style>
+        /* Индикатор загрузки */
+        body.loading {
+            pointer-events: none;
+        }
+
+            body.loading::after {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.1);
+                z-index: 9998;
+            }
+
+            body.loading::before {
+                content: '';
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                width: 40px;
+                height: 40px;
+                margin: -20px 0 0 -20px;
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #007bff;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                z-index: 9999;
+            }
+
+        @@keyframes spin {
+            0%
+
+        {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+
+        }
+
+        /* Улучшенные стили навбара */
+        .navbar-brand {
+            font-weight: 600;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .navbar-text {
+            font-family: monospace;
+            background: rgba(255,255,255,0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+    </style>
 </body>
 </html>

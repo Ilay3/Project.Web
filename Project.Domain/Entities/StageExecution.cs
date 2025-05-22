@@ -1,4 +1,7 @@
-﻿using System;
+﻿// Обновления для Project.Domain/Entities/StageExecution.cs
+// Добавить недостающие свойства к существующему классу:
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -26,6 +29,8 @@ namespace Project.Domain.Entities
         // true если это переналадка, иначе операция
         public bool IsSetup { get; set; }
 
+        // === НОВЫЕ СВОЙСТВА ДЛЯ ПЛАНИРОВАНИЯ ===
+
         // Позиция в очереди, если этап ожидает
         public int? QueuePosition { get; set; }
 
@@ -40,7 +45,9 @@ namespace Project.Domain.Entities
 
         // Причина паузы или отмены
         public string? ReasonNote { get; set; }
-        public bool IsProcessedByScheduler { get; set; }
+
+        // Флаг обработки планировщиком
+        public bool IsProcessedByScheduler { get; set; } = false;
 
         // Время последнего изменения статуса
         public DateTime? StatusChangedTimeUtc { get; set; }
@@ -51,7 +58,7 @@ namespace Project.Domain.Entities
         // Последняя ошибка, если была
         public string? LastErrorMessage { get; set; }
 
-        // Идентификатор последнего устройства, с которого управляли этапом
+        // Идентификатор устройства, с которого управляли этапом
         public string? DeviceId { get; set; }
 
         // Фактическое время работы (с учетом пауз)
@@ -64,7 +71,7 @@ namespace Project.Domain.Entities
             // Если этап завершен, используем время окончания
             if (Status == StageExecutionStatus.Completed && EndTimeUtc.HasValue)
             {
-                // Если был паузы, учитываем их
+                // Если были паузы, учитываем их
                 if (PauseTimeUtc.HasValue && ResumeTimeUtc.HasValue)
                 {
                     // Общее время минус время паузы
@@ -78,7 +85,7 @@ namespace Project.Domain.Entities
             // Если этап в процессе, считаем текущее время
             if (Status == StageExecutionStatus.InProgress)
             {
-                // Если был паузы, учитываем их
+                // Если были паузы, учитываем их
                 if (PauseTimeUtc.HasValue && ResumeTimeUtc.HasValue)
                 {
                     // Общее время минус время паузы
@@ -97,7 +104,6 @@ namespace Project.Domain.Entities
 
             return null;
         }
-
     }
 
     public enum StageExecutionStatus

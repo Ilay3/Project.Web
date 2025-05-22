@@ -1,0 +1,172 @@
+﻿@model MainDashboardViewModel
+@{
+    ViewData["Title"] = "Система управления производством";
+}
+
+<div class="container-fluid">
+    <!-- Главная панель навигации -->
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Система управления производством</h2>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBatchModal">
+                    <i class="bi bi-plus-lg"></i> Новая партия
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="refreshDataBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основные вкладки -->
+    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="gantt-tab" data-bs-toggle="tab" data-bs-target="#gantt-pane" type="button" role="tab">
+                <i class="bi bi-calendar3"></i> Диаграмма Ганта
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="queue-tab" data-bs-toggle="tab" data-bs-target="#queue-pane" type="button" role="tab">
+                <i class="bi bi-list-ol"></i> Очередь
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="batches-tab" data-bs-toggle="tab" data-bs-target="#batches-pane" type="button" role="tab">
+                <i class="bi bi-box"></i> Партии
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="machines-tab" data-bs-toggle="tab" data-bs-target="#machines-pane" type="button" role="tab">
+                <i class="bi bi-tools"></i> Станки
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="references-tab" data-bs-toggle="tab" data-bs-target="#references-pane" type="button" role="tab">
+                <i class="bi bi-gear"></i> Справочники
+            </button>
+        </li>
+    </ul>
+
+    <!-- Содержимое вкладок -->
+    <div class="tab-content" id="mainTabsContent">
+
+        <!-- Диаграмма Ганта -->
+        <div class="tab-pane fade show active" id="gantt-pane" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <div id="gantt-container" style="height: 600px; overflow: auto;">
+                        <!-- Диаграмма Ганта будет отрисована здесь -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Очередь -->
+        <div class="tab-pane fade" id="queue-pane" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Очередь этапов</h5>
+                </div>
+                <div class="card-body">
+                    <div id="queue-container">
+                        <!-- Очередь будет отображена здесь -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Партии -->
+        <div class="tab-pane fade" id="batches-pane" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Производственные партии</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="batches-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Деталь</th>
+                                    <th>Количество</th>
+                                    <th>Дата создания</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Данные загружаются через JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Станки -->
+        <div class="tab-pane fade" id="machines-pane" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Станки</h5>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#machineModal">
+                        <i class="bi bi-plus"></i> Добавить станок
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="machines-container">
+                        <!-- Станки будут отображены здесь -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Справочники -->
+        <div class="tab-pane fade" id="references-pane" role="tabpanel">
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Детали</h5>
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#detailModal">
+                                <i class="bi bi-plus"></i> Добавить
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="details-container">
+                                <!-- Детали будут отображены здесь -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Типы станков</h5>
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#machineTypeModal">
+                                <i class="bi bi-plus"></i> Добавить
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="machine-types-container">
+                                <!-- Типы станков будут отображены здесь -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна -->
+@await Html.PartialAsync("_Modals")
+
+@section Scripts {
+    <script src="~/js/main-dashboard.js"></script>
+    <script src="~/js/gantt-chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+}

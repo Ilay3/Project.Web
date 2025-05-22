@@ -1,0 +1,269 @@
+﻿<!-- Модальное окно для деталей -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="detailForm">
+                    <input type="hidden" id="detailId" />
+                    <div class="mb-3">
+                        <label for="detailNumber" class="form-label">Номер детали</label>
+                        <input type="text" class="form-control" id="detailNumber" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="detailName" class="form-label">Название детали</label>
+                        <input type="text" class="form-control" id="detailName" required />
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveDetail()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для типов станков -->
+<div class="modal fade" id="machineTypeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Тип станка</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="machineTypeForm">
+                    <input type="hidden" id="machineTypeId" />
+                    <div class="mb-3">
+                        <label for="machineTypeName" class="form-label">Название типа станка</label>
+                        <input type="text" class="form-control" id="machineTypeName" required />
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveMachineType()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для станков -->
+<div class="modal fade" id="machineModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Станок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="machineForm">
+                    <input type="hidden" id="machineId" />
+                    <div class="mb-3">
+                        <label for="machineName" class="form-label">Название станка</label>
+                        <input type="text" class="form-control" id="machineName" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="machineInventoryNumber" class="form-label">Инвентарный номер</label>
+                        <input type="text" class="form-control" id="machineInventoryNumber" required />
+                    </div>
+                    <div class="mb-3">
+                        <label for="machineTypeSelect" class="form-label">Тип станка</label>
+                        <select class="form-select" id="machineTypeSelect" required>
+                            <option value="">Выберите тип станка</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="machinePriority" class="form-label">Приоритет</label>
+                        <input type="number" class="form-control" id="machinePriority" value="0" />
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveMachine()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для создания партии -->
+<div class="modal fade" id="createBatchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать партию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="batchForm">
+                    <div class="mb-3">
+                        <label for="batchDetailSelect" class="form-label">Деталь</label>
+                        <select class="form-select" id="batchDetailSelect" required>
+                            <option value="">Выберите деталь</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="batchQuantity" class="form-label">Количество</label>
+                        <input type="number" class="form-control" id="batchQuantity" min="1" required />
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="splitBatchCheck" />
+                        <label class="form-check-label" for="splitBatchCheck">Разделить на подпартии</label>
+                    </div>
+                    <div id="subBatchesContainer" class="d-none">
+                        <div class="mb-3">
+                            <label for="subBatchCount" class="form-label">Количество подпартий</label>
+                            <input type="number" class="form-control" id="subBatchCount" min="2" value="2" />
+                        </div>
+                        <div id="subBatchQuantities"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createBatch()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для маршрута -->
+<div class="modal fade" id="routeModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Маршрут изготовления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="routeForm">
+                    <input type="hidden" id="routeId" />
+                    <input type="hidden" id="routeDetailId" />
+                    <div class="mb-3">
+                        <label class="form-label">Деталь: <span id="routeDetailName"></span></label>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6>Этапы маршрута</h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRouteStage()">
+                                <i class="bi bi-plus"></i> Добавить этап
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered" id="routeStagesTable">
+                                <thead>
+                                    <tr>
+                                        <th>№</th>
+                                        <th>Название</th>
+                                        <th>Тип станка</th>
+                                        <th>Норма времени (ч)</th>
+                                        <th>Время переналадки (ч)</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Этапы добавляются динамически -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRoute()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для управления этапом -->
+<div class="modal fade" id="stageControlModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Управление этапом</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="stageInfo">
+                    <!-- Информация об этапе -->
+                </div>
+                <div id="stageActions" class="mt-3">
+                    <!-- Кнопки действий -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для переназначения этапа -->
+<div class="modal fade" id="reassignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Переназначить этап</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reassignStageId" />
+                <div class="mb-3">
+                    <label for="reassignMachineSelect" class="form-label">Выберите станок</label>
+                    <select class="form-select" id="reassignMachineSelect" required>
+                        <option value="">Выберите станок</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="confirmReassign()">Переназначить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно времён переналадки -->
+<div class="modal fade" id="setupTimeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Времена переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="addSetupTime()">
+                        <i class="bi bi-plus"></i> Добавить время переналадки
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="setupTimesTable">
+                        <thead>
+                            <tr>
+                                <th>Станок</th>
+                                <th>С детали</th>
+                                <th>На деталь</th>
+                                <th>Время (ч)</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Данные загружаются динамически -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
