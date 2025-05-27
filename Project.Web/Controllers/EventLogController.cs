@@ -150,23 +150,7 @@ namespace Project.Web.Controllers
             return View(timeline);
         }
 
-        /// <summary>
-        /// Статистика событий
-        /// </summary>
-        public async Task<IActionResult> Statistics(DateTime? startDate = null, DateTime? endDate = null, int? machineId = null)
-        {
-            startDate ??= DateTime.Today.AddDays(-30);
-            endDate ??= DateTime.Today.AddDays(1);
-
-            var statistics = await _eventLogService.GetEventStatisticsAsync(
-                startDate.Value,
-                endDate.Value,
-                machineId);
-
-            ViewBag.Machines = await _machineService.GetAllAsync();
-
-            return View(statistics);
-        }
+        
 
         /// <summary>
         /// Dashboard событий
