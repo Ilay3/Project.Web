@@ -20,9 +20,7 @@ namespace Project.Infrastructure.Data
         public DbSet<StageExecution> StageExecutions { get; set; }
         public DbSet<SetupTime> SetupTimes { get; set; }
 
-        // Новые таблицы для событий
-        public DbSet<StageEvent> StageEvents { get; set; }
-        public DbSet<SystemEvent> SystemEvents { get; set; }
+       
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -158,91 +156,7 @@ namespace Project.Infrastructure.Data
                 .HasIndex(st => new { st.MachineId, st.FromDetailId, st.ToDetailId })
                 .IsUnique();
 
-            // === НАСТРОЙКА СОБЫТИЙ ===
-
-            // Настройка StageEvent
-            modelBuilder.Entity<StageEvent>()
-                .HasOne(se => se.StageExecution)
-                .WithMany()
-                .HasForeignKey(se => se.StageExecutionId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasOne(se => se.PreviousMachine)
-                .WithMany()
-                .HasForeignKey(se => se.PreviousMachineId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasOne(se => se.NewMachine)
-                .WithMany()
-                .HasForeignKey(se => se.NewMachineId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Конверсия DateTime для StageEvent
-            modelBuilder.Entity<StageEvent>().Property(x => x.EventTimeUtc)
-                .HasConversion(v => v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
-
-            // Индексы для StageEvent (для производительности)
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => se.StageExecutionId);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => se.EventTimeUtc);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => se.EventType);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => se.OperatorId);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => se.IsAutomatic);
-
-            modelBuilder.Entity<StageEvent>()
-                .HasIndex(se => new { se.EventTimeUtc, se.EventType });
-
-            // Настройка SystemEvent
-            // Конверсия DateTime для SystemEvent
-            modelBuilder.Entity<SystemEvent>().Property(x => x.EventTimeUtc)
-                .HasConversion(v => v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
-
-            modelBuilder.Entity<SystemEvent>().Property(x => x.ProcessedTimeUtc)
-                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
-
-            modelBuilder.Entity<SystemEvent>().Property(x => x.NextProcessingAttempt)
-                .HasConversion(v => v.HasValue ? v.Value.ToUniversalTime() : (DateTime?)null, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : (DateTime?)null);
-
-            // Индексы для SystemEvent (для производительности)
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.EventTimeUtc);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.Category);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.EventType);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.Severity);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.Source);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.UserId);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => se.IsProcessed);
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => new { se.Category, se.Severity });
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => new { se.IsProcessed, se.Severity });
-
-            modelBuilder.Entity<SystemEvent>()
-                .HasIndex(se => new { se.EventTimeUtc, se.Category, se.Severity });
+           ;
 
             // Создание индексов для ускорения запросов
             modelBuilder.Entity<StageExecution>()

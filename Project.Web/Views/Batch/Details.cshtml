@@ -17,9 +17,7 @@
                 <button type="button" class="btn btn-success" onclick="autoRefreshData()" id="autoRefreshBtn">
                     <i class="bi bi-arrow-clockwise"></i> Автообновление
                 </button>
-                <a href="@Url.Action("Index", "Gantt")" class="btn btn-outline-primary">
-                    <i class="bi bi-calendar3"></i> Диаграмма Ганта
-                </a>
+
             </div>
         </div>
     </div>
@@ -78,12 +76,6 @@
                         </button>
                         <button type="button" class="btn btn-warning" onclick="pauseAllActiveStages()">
                             <i class="bi bi-pause-fill"></i> Приостановить все
-                        </button>
-                        <button type="button" class="btn btn-info" onclick="showBatchStatistics()">
-                            <i class="bi bi-graph-up"></i> Статистика
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="exportBatchReport()">
-                            <i class="bi bi-file-earmark-excel"></i> Экспорт отчета
                         </button>
                     </div>
                 </div>
