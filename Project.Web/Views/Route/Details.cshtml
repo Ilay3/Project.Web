@@ -1,22 +1,23 @@
-﻿@using Project.Contracts.ModelDTO
-@model RouteDto
+﻿@model Project.Contracts.ModelDTO.RouteDto
 @{
-    ViewData["Title"] = "Детали маршрута: " + Model.DetailName;
+    ViewData["Title"] = "Маршрут для " + Model.DetailName;
 }
 
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
             <h2>Маршрут изготовления</h2>
-            <h3 class="text-muted">@Model.DetailName</h3>
+            <p class="lead">Деталь: @Model.DetailName</p>
         </div>
         <div class="col-auto">
-            <a href="@Url.Action("Index")" class="btn btn-outline-primary">
-                <i class="bi bi-arrow-left"></i> К списку маршрутов
-            </a>
-            <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-primary">
-                <i class="bi bi-pencil"></i> Редактировать
-            </a>
+            <div class="btn-group">
+                <a href="@Url.Action("Index")" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> К списку маршрутов
+                </a>
+                <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-primary">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </a>
+            </div>
         </div>
     </div>
 
@@ -27,118 +28,130 @@
                     <h5 class="mb-0">Этапы маршрута</h5>
                 </div>
                 <div class="card-body">
-                    @if (Model.Stages.Any())
+                    @if (Model.Stages != null && Model.Stages.Any())
                     {
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th width="10%">№</th>
-                                            <th width="30%">Операция</th>
-                                            <th width="25%">Тип станка</th>
-                                            <th width="15%">Время на деталь (ч)</th>
-                                            <th width="20%">Время переналадки (ч)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th width="10%">№</th>
+                                        <th width="30%">Операция</th>
+                                        <th width="25%">Тип станка</th>
+                                        <th width="15%">Время на деталь (ч)</th>
+                                        <th width="15%">Время переналадки (ч)</th>
+                                        <th width="5%">Тип</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
                                     @foreach (var stage in Model.Stages.OrderBy(s => s.Order))
                                     {
-                                                <tr>
-                                                    <td>
-                                                        <span class="badge bg-primary fs-6">@stage.Order</span>
-                                                    </td>
-                                                    <td>
-                                                        <strong>@stage.Name</strong>
-                                                        <br><small class="text-muted">@stage.StageType</small>
-                                                    </td>
-                                                    <td>
-                                                        <i class="bi bi-tools text-secondary me-1"></i>
-                                                @stage.MachineTypeName
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-info">@stage.NormTime ч</span>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-warning text-dark">@stage.SetupTime ч</span>
-                                                    </td>
-                                                </tr>
+                                        <tr>
+                                            <td><strong>@stage.Order</strong></td>
+                                            <td>@stage.Name</td>
+                                            <td>@stage.MachineTypeName</td>
+                                            <td>@stage.NormTime</td>
+                                            <td>@stage.SetupTime</td>
+                                            <td>
+                                                @if (stage.StageType == "Setup")
+                                                {
+                                                    <span class="badge bg-warning text-dark">Переналадка</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-primary">Операция</span>
+                                                }
+                                            </td>
+                                        </tr>
                                     }
-                                    </tbody>
-                                </table>
-                            </div>
+                                </tbody>
+                            </table>
+                        </div>
                     }
                     else
                     {
-                            <div class="text-center p-5">
-                                <i class="bi bi-diagram-3" style="font-size: 3rem; color: #6c757d;"></i>
-                                <h4 class="mt-3">Этапы не добавлены</h4>
-                                <p class="text-muted">Добавьте этапы в маршрут</p>
-                                <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-primary">
-                                    <i class="bi bi-plus"></i> Добавить этапы
-                                </a>
-                            </div>
+                        <div class="text-center p-4">
+                            <i class="bi bi-diagram-3 mb-3" style="font-size: 3rem; color: #6c757d;"></i>
+                            <h5>Этапы не добавлены</h5>
+                            <p class="text-muted">В данном маршруте пока нет этапов.</p>
+                        </div>
                     }
                 </div>
             </div>
         </div>
 
         <div class="col-md-4">
-            <div class="card mb-4">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Сводка по маршруту</h5>
+                    <h5 class="mb-0">Информация о маршруте</h5>
                 </div>
                 <div class="card-body">
-                    @{
-                        var totalNormTime = Model.Stages.Sum(s => s.NormTime);
-                        var totalSetupTime = Model.Stages.Sum(s => s.SetupTime);
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>ID маршрута:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.Id
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Деталь:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @Model.DetailName
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <strong>Количество этапов:</strong>
+                        </div>
+                        <div class="col-md-7">
+                            @(Model.Stages?.Count ?? 0)
+                        </div>
+                    </div>
+                    @if (Model.Stages != null && Model.Stages.Any())
+                    {
+                        <div class="row mb-3">
+                            <div class="col-md-5">
+                                <strong>Общее время:</strong>
+                            </div>
+                            <div class="col-md-7">
+                                @Math.Round(Model.Stages.Sum(s => s.NormTime), 2) ч/шт
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-5">
+                                <strong>Время переналадки:</strong>
+                            </div>
+                            <div class="col-md-7">
+                                @Math.Round(Model.Stages.Sum(s => s.SetupTime), 2) ч
+                            </div>
+                        </div>
                     }
-
-                    <div class="row text-center mb-3">
-                        <div class="col-6">
-                            <h4 class="text-primary">@totalNormTime</h4>
-                            <small class="text-muted">Общее время изготовления (ч)</small>
-                        </div>
-                        <div class="col-6">
-                            <h4 class="text-warning">@totalSetupTime</h4>
-                            <small class="text-muted">Общее время переналадки (ч)</small>
-                        </div>
-                    </div>
-
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <h4 class="text-info">@Model.Stages.Count</h4>
-                            <small class="text-muted">Количество этапов</small>
-                        </div>
-                        <div class="col-6">
-                            <h4 class="text-success">@(totalNormTime + totalSetupTime)</h4>
-                            <small class="text-muted">Общее время (ч)</small>
-                        </div>
-                    </div>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card mt-3">
                 <div class="card-header">
                     <h5 class="mb-0">Типы станков</h5>
                 </div>
                 <div class="card-body">
-                    @{
-                        var machineTypes = Model.Stages.GroupBy(s => s.MachineTypeName).ToList();
-                    }
-
-                    @if (machineTypes.Any())
+                    @if (Model.Stages != null && Model.Stages.Any())
                     {
-                        @foreach (var group in machineTypes)
-                        {
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <span>@group.Key</span>
-                                        <span class="badge bg-secondary">@group.Count() этап(ов)</span>
-                                    </div>
-                        }
+                        var machineTypes = Model.Stages.Select(s => s.MachineTypeName).Distinct();
+                        <ul class="list-unstyled">
+                            @foreach (var machineType in machineTypes)
+                            {
+                                <li class="mb-2">
+                                    <i class="bi bi-tools text-primary"></i>
+                                    @machineType
+                                </li>
+                            }
+                        </ul>
                     }
                     else
                     {
-                            <p class="text-muted">Этапы не добавлены</p>
+                        <p class="text-muted">Станки не указаны</p>
                     }
                 </div>
             </div>

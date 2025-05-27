@@ -22,6 +22,13 @@ builder.Services.AddControllersWithViews()
     opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
     opt.JsonSerializerOptions.WriteIndented = true;
 });
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    });
+});
 
 var app = builder.Build();
 

@@ -53,7 +53,7 @@ namespace Project.Domain.Entities
         public DateTime? StatusChangedTimeUtc { get; set; }
 
         // Количество попыток запуска этапа
-        public int StartAttempts { get; set; } = 0;
+        public int? StartAttempts { get; set; } = 0;
 
         // Последняя ошибка, если была
         public string? LastErrorMessage { get; set; }

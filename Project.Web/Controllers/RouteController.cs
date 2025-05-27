@@ -48,33 +48,16 @@ namespace Project.Web.Controllers
 
         public async Task<IActionResult> Details(int id)
         {
-            var route = await _routeService.GetByIdAsync(id);
-            if (route == null)
+            var routeDto = await _routeService.GetByIdAsync(id);
+            if (routeDto == null)
                 return NotFound();
 
-            var viewModel = new RouteViewModel
-            {
-                Id = route.Id,
-                DetailName = route.DetailName,
-                Stages = route.Stages.Select(s => new RouteStageViewModel
-                {
-                    Id = s.Id,
-                    Order = s.Order,
-                    Name = s.Name,
-                    MachineTypeName = s.MachineTypeName,
-                    NormTime = s.NormTime,
-                    SetupTime = s.SetupTime,
-                    StageType = s.StageType
-                }).ToList()
-            };
-
-            return View(viewModel);
+            return View(routeDto);
         }
 
         [HttpGet]
         public async Task<IActionResult> Create()
         {
-            // Получаем списки для выпадающих списков
             var details = await _detailService.GetAllAsync();
             var machineTypes = await _machineTypeService.GetAllAsync();
 
@@ -99,7 +82,6 @@ namespace Project.Web.Controllers
             {
                 ModelState.AddModelError("", ex.Message);
 
-                // Восстанавливаем списки для выпадающих списков
                 var details = await _detailService.GetAllAsync();
                 var machineTypes = await _machineTypeService.GetAllAsync();
 
@@ -117,14 +99,12 @@ namespace Project.Web.Controllers
             if (route == null)
                 return NotFound();
 
-            // Получаем списки для выпадающих списков
             var details = await _detailService.GetAllAsync();
             var machineTypes = await _machineTypeService.GetAllAsync();
 
             ViewBag.Details = details;
             ViewBag.MachineTypes = machineTypes;
 
-            // Создаем DTO для редактирования
             var dto = new RouteEditDto
             {
                 Id = route.Id,
@@ -159,7 +139,6 @@ namespace Project.Web.Controllers
             {
                 ModelState.AddModelError("", ex.Message);
 
-                // Восстанавливаем списки для выпадающих списков
                 var details = await _detailService.GetAllAsync();
                 var machineTypes = await _machineTypeService.GetAllAsync();
 
@@ -184,7 +163,6 @@ namespace Project.Web.Controllers
             }
         }
 
-        // API для получения маршрута для детали (AJAX)
         [HttpGet]
         public async Task<IActionResult> GetRouteForDetail(int detailId)
         {
