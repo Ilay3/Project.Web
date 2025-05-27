@@ -130,6 +130,7 @@ namespace Project.Application.Services
             string deviceId = null,
             string comment = null,
             TimeSpan? timeInPending = null,
+            TimeSpan? timeInPreviousState = null,
             bool isAutomatic = false)
         {
             await LogStageEventAsync(

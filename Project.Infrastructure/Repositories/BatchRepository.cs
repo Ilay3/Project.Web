@@ -111,7 +111,7 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.Machine)
                 .ToListAsync();
 
-        // Специализированные запросы для планирования
+        // *** ИСПРАВЛЕНИЕ: Специализированные запросы для планирования ***
 
         // Последний завершенный этап на станке
         public async Task<StageExecution?> GetLastCompletedStageOnMachineAsync(int machineId) =>
@@ -177,7 +177,8 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.RouteStage)
                 .Where(se => se.MachineId == machineId &&
                              se.Status == StageExecutionStatus.Waiting)
-                .OrderBy(se => se.SubBatch.Batch.CreatedUtc) // по дате создания партии
+                .OrderBy(se => se.Priority) // сначала по приоритету
+                .ThenBy(se => se.SubBatch.Batch.CreatedUtc) // потом по дате создания партии
                 .FirstOrDefaultAsync();
 
         // Все этапы в очереди
@@ -189,7 +190,8 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.RouteStage)
                     .ThenInclude(rs => rs.MachineType)
                 .Where(se => se.Status == StageExecutionStatus.Waiting)
-                .OrderBy(se => se.SubBatch.Batch.CreatedUtc) // по дате создания партии
+                .OrderBy(se => se.Priority) // сначала по приоритету
+                .ThenBy(se => se.SubBatch.Batch.CreatedUtc) // потом по дате создания партии
                 .ToListAsync();
 
         // Этапы в очереди на конкретный станок
@@ -199,60 +201,11 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.RouteStage)
                 .Where(se => se.MachineId == machineId &&
                              se.Status == StageExecutionStatus.Waiting)
-                .OrderBy(se => se.SubBatch.Batch.CreatedUtc) // по дате создания партии
+                .OrderBy(se => se.Priority) // сначала по приоритету
+                .ThenBy(se => se.SubBatch.Batch.CreatedUtc) // потом по дате создания партии
                 .ToListAsync();
 
-        // История и отчетность
-        public async Task<List<StageExecution>> GetStageExecutionHistoryAsync(
-            DateTime? startDate = null,
-            DateTime? endDate = null,
-            int? machineId = null,
-            int? detailId = null)
-        {
-            var query = _db.StageExecutions
-                .Include(se => se.SubBatch)
-                    .ThenInclude(sb => sb.Batch)
-                        .ThenInclude(b => b.Detail)
-                .Include(se => se.RouteStage)
-                    .ThenInclude(rs => rs.MachineType)
-                .Include(se => se.Machine)
-                .AsQueryable();
-
-            // Фильтрация по дате начала
-            if (startDate.HasValue)
-            {
-                query = query.Where(se =>
-                    (se.StartTimeUtc.HasValue && se.StartTimeUtc >= startDate) ||
-                    (se.EndTimeUtc.HasValue && se.EndTimeUtc >= startDate));
-            }
-
-            // Фильтрация по дате окончания
-            if (endDate.HasValue)
-            {
-                query = query.Where(se =>
-                    (!se.StartTimeUtc.HasValue) ||
-                    (se.StartTimeUtc.HasValue && se.StartTimeUtc <= endDate));
-            }
-
-            // Фильтрация по станку
-            if (machineId.HasValue)
-            {
-                query = query.Where(se => se.MachineId == machineId);
-            }
-
-            // Фильтрация по детали
-            if (detailId.HasValue)
-            {
-                query = query.Where(se => se.SubBatch.Batch.DetailId == detailId);
-            }
-
-            // Сортировка по времени начала
-            return await query
-                .OrderByDescending(se => se.StartTimeUtc)
-                .ToListAsync();
-        }
-
-        // Получение всех этапов в статусе "Pending" (готовы к запуску)
+        // *** ИСПРАВЛЕНИЕ: Получение всех этапов в статусе "Pending" (готовы к запуску) ***
         public async Task<List<StageExecution>> GetPendingStagesAsync()
         {
             return await _db.StageExecutions
@@ -263,13 +216,13 @@ namespace Project.Infrastructure.Repositories
                     .ThenInclude(rs => rs.MachineType)
                 .Include(se => se.Machine)
                 .Where(se => se.Status == StageExecutionStatus.Pending)
-                .OrderBy(se => se.SubBatch.Batch.CreatedUtc)
+                .OrderBy(se => se.Priority) // сначала по приоритету
+                .ThenBy(se => se.SubBatch.Batch.CreatedUtc)
                 .ThenBy(se => se.RouteStage.Order)
                 .ToListAsync();
         }
 
-
-        // Получение недавно завершенных этапов, которые еще не обработаны системой планирования
+        // *** ИСПРАВЛЕНИЕ: Получение недавно завершенных этапов ***
         public async Task<List<StageExecution>> GetRecentlyCompletedStagesAsync()
         {
             var oneHourAgo = DateTime.UtcNow.AddHours(-1);
@@ -287,8 +240,7 @@ namespace Project.Infrastructure.Repositories
                 .ToListAsync();
         }
 
-
-        // Получение следующих доступных этапов для указанной подпартии
+        // *** ИСПРАВЛЕНИЕ: Получение следующих доступных этапов для указанной подпартии ***
         public async Task<List<StageExecution>> GetNextAvailableStagesForSubBatchAsync(int subBatchId)
         {
             var subBatch = await _db.SubBatches
@@ -316,7 +268,7 @@ namespace Project.Infrastructure.Repositories
                 .ToList();
         }
 
-        // Получение списка свободных станков, подходящих для указанного этапа
+        // *** ИСПРАВЛЕНИЕ: Получение списка свободных станков для этапа ***
         public async Task<List<Machine>> GetAvailableMachinesForStageAsync(int stageExecutionId)
         {
             var stage = await _db.StageExecutions
@@ -354,7 +306,7 @@ namespace Project.Infrastructure.Repositories
             }
         }
 
-        // Получение информации о загрузке станков на указанный период
+        // *** ИСПРАВЛЕНИЕ: Получение информации о загрузке станков ***
         public async Task<Dictionary<int, List<StageExecution>>> GetMachineScheduleAsync(DateTime startDate, DateTime endDate)
         {
             var scheduledStages = await _db.StageExecutions
@@ -391,7 +343,7 @@ namespace Project.Infrastructure.Repositories
             return result;
         }
 
-        // Получение прогнозируемого времени завершения для указанной партии
+        // *** ИСПРАВЛЕНИЕ: Получение прогнозируемого времени завершения ***
         public async Task<DateTime?> GetEstimatedCompletionTimeForBatchAsync(int batchId)
         {
             var batch = await _db.Batches
@@ -464,7 +416,7 @@ namespace Project.Infrastructure.Repositories
             return latestEndTime;
         }
 
-        // Проверка наличия возможных конфликтов в расписании
+        // *** ИСПРАВЛЕНИЕ: Проверка наличия конфликтов в расписании ***
         public async Task<List<ScheduleConflict>> GetScheduleConflictsAsync()
         {
             var result = new List<ScheduleConflict>();
@@ -476,8 +428,7 @@ namespace Project.Infrastructure.Repositories
             {
                 var machineId = machineSchedule.Key;
                 var machineStages = machineSchedule.Value
-                    .OrderBy(s => s.StartTimeUtc)
-                    .ThenBy(s => s.ScheduledStartTimeUtc)
+                    .OrderBy(s => s.StartTimeUtc ?? s.ScheduledStartTimeUtc ?? DateTime.MaxValue)
                     .ToList();
 
                 // Проверяем наличие пересечений во времени
@@ -539,5 +490,54 @@ namespace Project.Infrastructure.Repositories
             return result;
         }
 
+        // История и отчетность
+        public async Task<List<StageExecution>> GetStageExecutionHistoryAsync(
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            int? machineId = null,
+            int? detailId = null)
+        {
+            var query = _db.StageExecutions
+                .Include(se => se.SubBatch)
+                    .ThenInclude(sb => sb.Batch)
+                        .ThenInclude(b => b.Detail)
+                .Include(se => se.RouteStage)
+                    .ThenInclude(rs => rs.MachineType)
+                .Include(se => se.Machine)
+                .AsQueryable();
+
+            // Фильтрация по дате начала
+            if (startDate.HasValue)
+            {
+                query = query.Where(se =>
+                    (se.StartTimeUtc.HasValue && se.StartTimeUtc >= startDate) ||
+                    (se.EndTimeUtc.HasValue && se.EndTimeUtc >= startDate));
+            }
+
+            // Фильтрация по дате окончания
+            if (endDate.HasValue)
+            {
+                query = query.Where(se =>
+                    (!se.StartTimeUtc.HasValue) ||
+                    (se.StartTimeUtc.HasValue && se.StartTimeUtc <= endDate));
+            }
+
+            // Фильтрация по станку
+            if (machineId.HasValue)
+            {
+                query = query.Where(se => se.MachineId == machineId);
+            }
+
+            // Фильтрация по детали
+            if (detailId.HasValue)
+            {
+                query = query.Where(se => se.SubBatch.Batch.DetailId == detailId);
+            }
+
+            // Сортировка по времени начала
+            return await query
+                .OrderByDescending(se => se.StartTimeUtc)
+                .ToListAsync();
+        }
     }
 }

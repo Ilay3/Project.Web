@@ -16,6 +16,7 @@ namespace Project.Application.Services
         private readonly IRouteRepository _routeRepo;
         private readonly ISetupTimeRepository _setupTimeRepo;
         private readonly StageExecutionService _stageService;
+        private readonly EventLogService _eventLogService; // *** ИСПРАВЛЕНИЕ: Добавлен EventLogService ***
         private readonly ILogger<ProductionSchedulerService> _logger;
 
         public ProductionSchedulerService(
@@ -24,6 +25,7 @@ namespace Project.Application.Services
             IRouteRepository routeRepo,
             ISetupTimeRepository setupTimeRepo,
             StageExecutionService stageService,
+            EventLogService eventLogService, // *** ИСПРАВЛЕНИЕ: Добавлен параметр ***
             ILogger<ProductionSchedulerService> logger)
         {
             _batchRepo = batchRepo;
@@ -31,6 +33,7 @@ namespace Project.Application.Services
             _routeRepo = routeRepo;
             _setupTimeRepo = setupTimeRepo;
             _stageService = stageService;
+            _eventLogService = eventLogService; // *** ИСПРАВЛЕНИЕ: Внедрение сервиса ***
             _logger = logger;
         }
 
@@ -104,7 +107,7 @@ namespace Project.Application.Services
             }
         }
 
-        // Планирование конкретного этапа
+        // *** ИСПРАВЛЕНИЕ: Планирование конкретного этапа ***
         public async Task ScheduleStageExecutionAsync(int stageExecutionId)
         {
             var stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
@@ -115,17 +118,17 @@ namespace Project.Application.Services
                 stageExecution.Status != StageExecutionStatus.Pending)
                 return;
 
-            // Получаем подходящий тип станка для этого этапа
-            var requiredMachineTypeId = stageExecution.RouteStage.MachineTypeId;
-
-            // Получаем список доступных станков нужного типа
-            var availableMachines = await _machineRepo.GetAvailableMachinesAsync(requiredMachineTypeId);
+            // *** ИСПРАВЛЕНИЕ: Используем правильный метод для получения доступных станков ***
+            var availableMachines = await _batchRepo.GetAvailableMachinesForStageAsync(stageExecutionId);
 
             // Если нет доступных станков, ставим в очередь ожидания
             if (!availableMachines.Any())
             {
                 stageExecution.Status = StageExecutionStatus.Waiting;
+                stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
+
+                _logger.LogInformation("Этап {StageId} поставлен в очередь ожидания - нет доступных станков", stageExecutionId);
                 return;
             }
 
@@ -139,14 +142,76 @@ namespace Project.Application.Services
                 // Назначаем этап на выбранный станок
                 await _stageService.AssignStageToMachine(stageExecutionId, bestMachine.Id);
 
-                // Проверяем, все ли предыдущие этапы завершены
-                var allPreviousCompleted = await CheckAllPreviousStagesCompletedAsync(stageExecution);
+                _logger.LogInformation("Этап {StageId} назначен на станок {MachineId}", stageExecutionId, bestMachine.Id);
 
-                // Автоматически стартуем этап, если все предыдущие завершены
-                if (allPreviousCompleted && stageExecution.Status == StageExecutionStatus.Pending)
+                // *** ИСПРАВЛЕНИЕ: Проверяем возможность автоматического запуска ***
+                if (await CanStartStageAsync(stageExecutionId))
                 {
-                    await _stageService.StartStageExecution(stageExecutionId);
+                    await StartPendingStageAsync(stageExecutionId);
                 }
+            }
+        }
+
+        // *** ИСПРАВЛЕНИЕ: Проверка возможности запуска этапа ***
+        public async Task<bool> CanStartStageAsync(int stageExecutionId)
+        {
+            var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+            if (stage == null) return false;
+
+            // Если этап уже не в статусе Pending, его нельзя запустить
+            if (stage.Status != StageExecutionStatus.Pending) return false;
+
+            // Проверяем, что этап назначен на станок
+            if (!stage.MachineId.HasValue) return false;
+
+            // Для этапа переналадки не требуется проверка предыдущих этапов
+            if (stage.IsSetup) return true;
+
+            // *** ИСПРАВЛЕНИЕ: Проверяем, что этап переналадки завершен ***
+            var setupStage = await _batchRepo.GetSetupStageForMainStageAsync(stageExecutionId);
+            if (setupStage != null && setupStage.Status != StageExecutionStatus.Completed)
+            {
+                return false; // Ждем завершения переналадки
+            }
+
+            // Проверяем, все ли предыдущие этапы завершены
+            return await CheckAllPreviousStagesCompletedAsync(stage);
+        }
+
+        // *** ИСПРАВЛЕНИЕ: Запуск этапа, который находится в статусе Pending ***
+        public async Task<bool> StartPendingStageAsync(int stageExecutionId)
+        {
+            try
+            {
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+                if (stage == null) return false;
+
+                // Проверяем, можно ли запустить этап
+                if (!await CanStartStageAsync(stageExecutionId)) return false;
+
+                // *** ИСПРАВЛЕНИЕ: Проверяем занятость станка ***
+                if (stage.MachineId.HasValue)
+                {
+                    var currentStageOnMachine = await _batchRepo.GetCurrentStageOnMachineAsync(stage.MachineId.Value);
+                    if (currentStageOnMachine != null && currentStageOnMachine.Id != stageExecutionId)
+                    {
+                        // Станок занят другим этапом
+                        _logger.LogInformation("Станок {MachineId} занят этапом {CurrentStageId}, этап {StageId} отложен",
+                            stage.MachineId.Value, currentStageOnMachine.Id, stageExecutionId);
+                        return false;
+                    }
+                }
+
+                // Запускаем этап
+                await _stageService.StartStageExecution(stageExecutionId, operatorId: "SYSTEM", deviceId: "AUTO_SCHEDULER");
+
+                _logger.LogInformation("Этап {StageId} автоматически запущен", stageExecutionId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при автоматическом запуске этапа {StageId}", stageExecutionId);
+                return false;
             }
         }
 
@@ -189,10 +254,16 @@ namespace Project.Application.Services
         {
             // Получаем текущий этап, который выполняется на станке
             var currentStage = await _batchRepo.GetCurrentStageOnMachineAsync(machineId);
-            if (currentStage == null) return; // станок свободен, просто планируем новый этап
+            if (currentStage == null)
+            {
+                // Станок свободен, просто планируем новый этап
+                await ScheduleStageExecutionAsync(priorityStageExecutionId);
+                return;
+            }
 
             // Ставим текущий этап на паузу
-            await _stageService.PauseStageExecution(currentStage.Id);
+            await _stageService.PauseStageExecution(currentStage.Id, operatorId: "SYSTEM",
+                reasonNote: "Приостановлен для приоритетного этапа", deviceId: "AUTO_SCHEDULER");
 
             // Получаем приоритетный этап
             var priorityStage = await _batchRepo.GetStageExecutionByIdAsync(priorityStageExecutionId);
@@ -202,7 +273,10 @@ namespace Project.Application.Services
             await _stageService.AssignStageToMachine(priorityStageExecutionId, machineId);
 
             // Автоматически стартуем приоритетный этап
-            await _stageService.StartStageExecution(priorityStageExecutionId);
+            if (await CanStartStageAsync(priorityStageExecutionId))
+            {
+                await _stageService.StartStageExecution(priorityStageExecutionId, operatorId: "SYSTEM", deviceId: "AUTO_SCHEDULER");
+            }
         }
 
         // Переназначение этапа на другой станок
@@ -214,7 +288,8 @@ namespace Project.Application.Services
             // Если этап выполняется, сначала ставим на паузу
             if (stageExecution.Status == StageExecutionStatus.InProgress)
             {
-                await _stageService.PauseStageExecution(stageExecutionId);
+                await _stageService.PauseStageExecution(stageExecutionId, operatorId: "SYSTEM",
+                    reasonNote: "Пауза для переназначения", deviceId: "AUTO_SCHEDULER");
             }
 
             // Сохраняем текущий статус перед переназначением
@@ -226,18 +301,18 @@ namespace Project.Application.Services
             // Если этап был в процессе, возобновляем на новом станке
             if (currentStatus == StageExecutionStatus.InProgress)
             {
-                await _stageService.StartStageExecution(stageExecutionId);
+                await _stageService.StartStageExecution(stageExecutionId, operatorId: "SYSTEM", deviceId: "AUTO_SCHEDULER");
             }
         }
 
-        // Обработка события завершения этапа - планирование следующего
+        // *** ИСПРАВЛЕНИЕ: Обработка события завершения этапа ***
         public async Task HandleStageCompletionAsync(int stageExecutionId)
         {
             var stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
             if (stageExecution == null) throw new Exception("Stage execution not found");
 
-            // Отмечаем этап как завершенный
-            await _stageService.CompleteStageExecution(stageExecutionId);
+            // Отмечаем этап как обработанный планировщиком
+            await _batchRepo.MarkStageAsProcessedAsync(stageExecutionId);
 
             // Если это не этап переналадки, планируем следующий этап подпартии
             if (!stageExecution.IsSetup)
@@ -268,7 +343,7 @@ namespace Project.Application.Services
                 }
             }
 
-            // Проверяем, есть ли этапы в очереди на этот станок
+            // *** ИСПРАВЛЕНИЕ: Проверяем очередь на освободившемся станке ***
             if (stageExecution.MachineId.HasValue)
             {
                 var nextInQueue = await _batchRepo.GetNextStageInQueueForMachineAsync(stageExecution.MachineId.Value);
@@ -276,6 +351,7 @@ namespace Project.Application.Services
                 {
                     // Переводим этап из "Waiting" в "Pending"
                     nextInQueue.Status = StageExecutionStatus.Pending;
+                    nextInQueue.StatusChangedTimeUtc = DateTime.UtcNow;
                     await _batchRepo.UpdateStageExecutionAsync(nextInQueue);
 
                     // Планируем этап из очереди
@@ -385,63 +461,7 @@ namespace Project.Application.Services
             return estimatedEndTime;
         }
 
-        /// <summary>
-        /// Проверяет, можно ли запустить указанный этап
-        /// </summary>
-        public async Task<bool> CanStartStageAsync(int stageExecutionId)
-        {
-            var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
-            if (stage == null) return false;
-
-            // Если этап уже не в статусе Pending, его нельзя запустить
-            if (stage.Status != StageExecutionStatus.Pending) return false;
-
-            // Для этапа переналадки не требуется проверка предыдущих этапов
-            if (stage.IsSetup) return true;
-
-            // Проверяем, все ли предыдущие этапы завершены
-            return await CheckAllPreviousStagesCompletedAsync(stage);
-        }
-
-        /// <summary>
-        /// Запускает этап, который находится в статусе Pending
-        /// </summary>
-        public async Task<bool> StartPendingStageAsync(int stageExecutionId)
-        {
-            try
-            {
-                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
-                if (stage == null) return false;
-
-                // Проверяем, можно ли запустить этап
-                if (!await CanStartStageAsync(stageExecutionId)) return false;
-
-                // Если этап требует переналадки, сначала создаем и запускаем этап переналадки
-                if (!stage.IsSetup)
-                {
-                    var setupStage = await _batchRepo.GetSetupStageForMainStageAsync(stageExecutionId);
-                    if (setupStage != null && setupStage.Status != StageExecutionStatus.Completed)
-                    {
-                        // Запускаем этап переналадки
-                        await _stageService.StartStageExecution(setupStage.Id);
-                        return true; // Основной этап запустится после завершения переналадки
-                    }
-                }
-
-                // Запускаем основной этап
-                await _stageService.StartStageExecution(stageExecutionId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка при запуске этапа {StageId}", stageExecutionId);
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Автоматически выбирает и назначает оптимальный станок для этапа
-        /// </summary>
+        // *** ИСПРАВЛЕНИЕ: Автоматически выбирает и назначает оптимальный станок для этапа ***
         public async Task<bool> AutoAssignMachineToStageAsync(int stageExecutionId)
         {
             try
@@ -470,9 +490,7 @@ namespace Project.Application.Services
             }
         }
 
-        /// <summary>
-        /// Оптимизирует очередь этапов для максимальной загрузки станков
-        /// </summary>
+        // *** ИСПРАВЛЕНИЕ: Оптимизирует очередь этапов для максимальной загрузки станков ***
         public async Task OptimizeQueueAsync()
         {
             try
@@ -553,9 +571,7 @@ namespace Project.Application.Services
             }
         }
 
-        /// <summary>
-        /// Проверяет конфликты в текущем расписании и пытается их разрешить
-        /// </summary>
+        // *** ИСПРАВЛЕНИЕ: Проверяет конфликты в текущем расписании и пытается их разрешить ***
         public async Task ResolveScheduleConflictsAsync()
         {
             try
@@ -599,9 +615,7 @@ namespace Project.Application.Services
             }
         }
 
-        /// <summary>
-        /// Предсказывает оптимальное время для запуска производства новой детали
-        /// </summary>
+        // *** ИСПРАВЛЕНИЕ: Предсказывает оптимальное время для запуска производства новой детали ***
         public async Task<PredictedScheduleDto> PredictOptimalScheduleForDetailAsync(int detailId, int quantity)
         {
             try
@@ -702,5 +716,4 @@ namespace Project.Application.Services
             }
         }
     }
-
 }

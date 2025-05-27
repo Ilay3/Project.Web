@@ -16,6 +16,7 @@ namespace Project.Application.Services
         private readonly IBatchRepository _batchRepo;
         private readonly ISetupTimeRepository _setupTimeRepo;
         private readonly IDetailRepository _detailRepo;
+        private readonly EventLogService _eventLogService; // *** ИСПРАВЛЕНИЕ: Добавлен EventLogService ***
         private readonly ILogger<StageExecutionService> _logger;
 
         public StageExecutionService(
@@ -24,6 +25,7 @@ namespace Project.Application.Services
             IBatchRepository batchRepo,
             ISetupTimeRepository setupTimeRepo,
             IDetailRepository detailRepo,
+            EventLogService eventLogService, // *** ИСПРАВЛЕНИЕ: Добавлен параметр ***
             ILogger<StageExecutionService> logger)
         {
             _routeRepo = routeRepo;
@@ -31,6 +33,7 @@ namespace Project.Application.Services
             _batchRepo = batchRepo;
             _setupTimeRepo = setupTimeRepo;
             _detailRepo = detailRepo;
+            _eventLogService = eventLogService; // *** ИСПРАВЛЕНИЕ: Внедрение сервиса ***
             _logger = logger;
         }
 
@@ -55,13 +58,22 @@ namespace Project.Application.Services
                     SubBatchId = subBatchId,
                     RouteStageId = stage.Id,
                     Status = StageExecutionStatus.Pending, // ожидание
-                    IsSetup = false // это основной этап, не переналадка
+                    IsSetup = false, // это основной этап, не переналадка
+                    StatusChangedTimeUtc = DateTime.UtcNow // *** ИСПРАВЛЕНИЕ: Добавляем время изменения статуса ***
                 };
 
                 subBatch.StageExecutions.Add(stageExecution);
             }
 
             await _batchRepo.UpdateSubBatchAsync(subBatch);
+
+            // *** ИСПРАВЛЕНИЕ: Логируем создание этапов ***
+            foreach (var stageExecution in subBatch.StageExecutions.Where(se => !se.IsSetup))
+            {
+                await _eventLogService.LogStageCreatedAsync(
+                    stageExecution.Id,
+                    isAutomatic: true);
+            }
         }
 
         // Назначение этапа на конкретный станок
@@ -75,6 +87,13 @@ namespace Project.Application.Services
 
             var routeStage = stageExecution.RouteStage;
 
+            // *** ИСПРАВЛЕНИЕ: Валидация статуса перед назначением ***
+            if (stageExecution.Status != StageExecutionStatus.Pending &&
+                stageExecution.Status != StageExecutionStatus.Waiting)
+            {
+                throw new Exception($"Cannot assign machine to stage in status: {stageExecution.Status}");
+            }
+
             // Проверка соответствия типа станка и типа в маршруте
             if (machine.MachineTypeId != routeStage.MachineTypeId)
                 throw new Exception($"Machine type mismatch: required {routeStage.MachineType.Name}, got {machine.MachineType.Name}");
@@ -82,13 +101,33 @@ namespace Project.Application.Services
             // Проверяем, нужна ли переналадка
             var setupStage = await CheckAndCreateSetupStageIfNeeded(stageExecution, machine);
 
+            var previousMachineId = stageExecution.MachineId;
+
             // Привязываем основной этап к станку
             stageExecution.MachineId = machineId;
             stageExecution.Status = setupStage != null ?
                 StageExecutionStatus.Waiting : // ждем завершения переналадки
                 StageExecutionStatus.Pending;  // готов к запуску
+            stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
 
             await _batchRepo.UpdateStageExecutionAsync(stageExecution);
+
+            // *** ИСПРАВЛЕНИЕ: Логируем назначение на станок ***
+            await _eventLogService.LogStageAssignedAsync(
+                stageExecution.Id,
+                machineId,
+                isAutomatic: true);
+
+            // *** ИСПРАВЛЕНИЕ: Логируем переназначение, если был другой станок ***
+            if (previousMachineId.HasValue && previousMachineId.Value != machineId)
+            {
+                await _eventLogService.LogStageReassignedAsync(
+                    stageExecution.Id,
+                    previousMachineId.Value,
+                    machineId,
+                    "Automatic reassignment",
+                    isAutomatic: true);
+            }
         }
 
         // Проверка необходимости переналадки при смене детали на станке
@@ -136,7 +175,8 @@ namespace Project.Application.Services
                 RouteStageId = stageExecution.RouteStageId, // используем тот же этап маршрута
                 MachineId = machine.Id,
                 Status = StageExecutionStatus.Pending,
-                IsSetup = true // это переналадка
+                IsSetup = true, // это переналадка
+                StatusChangedTimeUtc = DateTime.UtcNow
             };
 
             // Добавляем этап переналадки в подпартию
@@ -144,7 +184,32 @@ namespace Project.Application.Services
             subBatch.StageExecutions.Add(setupStage);
             await _batchRepo.UpdateSubBatchAsync(subBatch);
 
+            // *** ИСПРАВЛЕНИЕ: Логируем создание этапа переналадки ***
+            await _eventLogService.LogStageCreatedAsync(
+                setupStage.Id,
+                isAutomatic: true);
+
             return setupStage;
+        }
+
+        // *** ИСПРАВЛЕНИЕ: Валидация переходов статусов ***
+        private bool CanTransitionTo(StageExecutionStatus currentStatus, StageExecutionStatus newStatus)
+        {
+            return currentStatus switch
+            {
+                StageExecutionStatus.Pending => newStatus == StageExecutionStatus.InProgress ||
+                                               newStatus == StageExecutionStatus.Waiting,
+                StageExecutionStatus.Waiting => newStatus == StageExecutionStatus.Pending ||
+                                               newStatus == StageExecutionStatus.Error,
+                StageExecutionStatus.InProgress => newStatus == StageExecutionStatus.Paused ||
+                                                  newStatus == StageExecutionStatus.Completed ||
+                                                  newStatus == StageExecutionStatus.Error,
+                StageExecutionStatus.Paused => newStatus == StageExecutionStatus.InProgress ||
+                                              newStatus == StageExecutionStatus.Error,
+                StageExecutionStatus.Completed => false, // Завершенный этап нельзя изменить
+                StageExecutionStatus.Error => newStatus == StageExecutionStatus.Pending, // Можно перезапустить
+                _ => false
+            };
         }
 
         // Запуск этапа в работу
@@ -155,7 +220,17 @@ namespace Project.Application.Services
 
             try
             {
-                // Проверка, что все предыдущие этапы завершены
+                // *** ИСПРАВЛЕНИЕ: Валидация перехода статуса ***
+                if (!CanTransitionTo(stageExecution.Status, StageExecutionStatus.InProgress))
+                {
+                    throw new Exception($"Cannot start stage from status: {stageExecution.Status}");
+                }
+
+                var timeInPreviousState = stageExecution.StatusChangedTimeUtc.HasValue
+                    ? DateTime.UtcNow - stageExecution.StatusChangedTimeUtc.Value
+                    : (TimeSpan?)null;
+
+                // *** ИСПРАВЛЕНИЕ: Проверка предыдущих этапов ***
                 if (!stageExecution.IsSetup)
                 {
                     var allPreviousCompleted = await CheckAllPreviousStagesCompleted(stageExecution);
@@ -163,7 +238,7 @@ namespace Project.Application.Services
                         throw new Exception("Cannot start stage: previous stages are not completed");
                 }
 
-                // Проверка, что этап переналадки (если есть) завершен
+                // *** ИСПРАВЛЕНИЕ: Проверка этапа переналадки ***
                 if (!stageExecution.IsSetup)
                 {
                     var setupStage = await _batchRepo.GetSetupStageForMainStageAsync(stageExecutionId);
@@ -172,6 +247,7 @@ namespace Project.Application.Services
                 }
 
                 // Обновляем статус и время
+                var previousStatus = stageExecution.Status;
                 stageExecution.Status = StageExecutionStatus.InProgress;
                 stageExecution.StartTimeUtc = DateTime.UtcNow;
                 stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
@@ -185,6 +261,15 @@ namespace Project.Application.Services
                     stageExecution.DeviceId = deviceId;
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
+
+                // *** ИСПРАВЛЕНИЕ: Логируем запуск этапа ***
+                await _eventLogService.LogStageStartedAsync(
+                    stageExecutionId,
+                    operatorId,
+                    operatorId, // operatorName - можно улучшить, получая из справочника
+                    deviceId,
+                    timeInPreviousState: timeInPreviousState,
+                    isAutomatic: string.IsNullOrEmpty(operatorId));
 
                 _logger.LogInformation("Этап {StageId} успешно запущен", stageExecutionId);
             }
@@ -207,9 +292,17 @@ namespace Project.Application.Services
 
             try
             {
-                if (stageExecution.Status != StageExecutionStatus.InProgress)
-                    throw new Exception("Cannot pause: stage is not in progress");
+                // *** ИСПРАВЛЕНИЕ: Валидация перехода статуса ***
+                if (!CanTransitionTo(stageExecution.Status, StageExecutionStatus.Paused))
+                {
+                    throw new Exception($"Cannot pause stage from status: {stageExecution.Status}");
+                }
 
+                var timeInProgress = stageExecution.StartTimeUtc.HasValue
+                    ? DateTime.UtcNow - stageExecution.StartTimeUtc.Value
+                    : (TimeSpan?)null;
+
+                var previousStatus = stageExecution.Status;
                 stageExecution.Status = StageExecutionStatus.Paused;
                 stageExecution.PauseTimeUtc = DateTime.UtcNow;
                 stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
@@ -226,6 +319,16 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
+                // *** ИСПРАВЛЕНИЕ: Логируем приостановку этапа ***
+                await _eventLogService.LogStagePausedAsync(
+                    stageExecutionId,
+                    reasonNote ?? "Приостановка оператором",
+                    operatorId,
+                    operatorId, // operatorName
+                    deviceId,
+                    timeInProgress,
+                    isAutomatic: string.IsNullOrEmpty(operatorId));
+
                 _logger.LogInformation("Этап {StageId} приостановлен. Причина: {Reason}",
                     stageExecutionId, reasonNote ?? "Не указана");
             }
@@ -240,7 +343,6 @@ namespace Project.Application.Services
             }
         }
 
-
         // Возобновление приостановленного этапа
         public async Task ResumeStageExecution(int stageExecutionId, string operatorId = null, string reasonNote = null, string deviceId = null)
         {
@@ -249,8 +351,15 @@ namespace Project.Application.Services
 
             try
             {
-                if (stageExecution.Status != StageExecutionStatus.Paused)
-                    throw new Exception("Cannot resume: stage is not paused");
+                // *** ИСПРАВЛЕНИЕ: Валидация перехода статуса ***
+                if (!CanTransitionTo(stageExecution.Status, StageExecutionStatus.InProgress))
+                {
+                    throw new Exception($"Cannot resume stage from status: {stageExecution.Status}");
+                }
+
+                var timeInPause = stageExecution.PauseTimeUtc.HasValue
+                    ? DateTime.UtcNow - stageExecution.PauseTimeUtc.Value
+                    : (TimeSpan?)null;
 
                 stageExecution.Status = StageExecutionStatus.InProgress;
                 stageExecution.ResumeTimeUtc = DateTime.UtcNow;
@@ -267,6 +376,16 @@ namespace Project.Application.Services
                     stageExecution.DeviceId = deviceId;
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
+
+                // *** ИСПРАВЛЕНИЕ: Логируем возобновление этапа ***
+                await _eventLogService.LogStageResumedAsync(
+                    stageExecutionId,
+                    operatorId,
+                    operatorId, // operatorName
+                    deviceId,
+                    reasonNote,
+                    timeInPause,
+                    isAutomatic: string.IsNullOrEmpty(operatorId));
 
                 _logger.LogInformation("Этап {StageId} возобновлен", stageExecutionId);
             }
@@ -289,8 +408,15 @@ namespace Project.Application.Services
 
             try
             {
-                if (stageExecution.Status != StageExecutionStatus.InProgress)
-                    throw new Exception("Cannot complete: stage is not in progress");
+                // *** ИСПРАВЛЕНИЕ: Валидация перехода статуса ***
+                if (!CanTransitionTo(stageExecution.Status, StageExecutionStatus.Completed))
+                {
+                    throw new Exception($"Cannot complete stage from status: {stageExecution.Status}");
+                }
+
+                var timeInProgress = stageExecution.StartTimeUtc.HasValue
+                    ? DateTime.UtcNow - stageExecution.StartTimeUtc.Value
+                    : (TimeSpan?)null;
 
                 stageExecution.Status = StageExecutionStatus.Completed;
                 stageExecution.EndTimeUtc = DateTime.UtcNow;
@@ -309,9 +435,19 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
+                // *** ИСПРАВЛЕНИЕ: Логируем завершение этапа ***
+                await _eventLogService.LogStageCompletedAsync(
+                    stageExecutionId,
+                    operatorId,
+                    operatorId, // operatorName
+                    deviceId,
+                    reasonNote,
+                    timeInProgress,
+                    isAutomatic: string.IsNullOrEmpty(operatorId));
+
                 _logger.LogInformation("Этап {StageId} завершен", stageExecutionId);
 
-                // После завершения переналадки, делаем доступным основной этап
+                // *** ИСПРАВЛЕНИЕ: После завершения переналадки делаем доступным основной этап ***
                 if (stageExecution.IsSetup)
                 {
                     var mainStage = await _batchRepo.GetMainStageForSetupAsync(stageExecutionId);
@@ -344,15 +480,14 @@ namespace Project.Application.Services
 
             try
             {
-                // Можно отменить только этапы в статусе Pending или Waiting
+                // *** ИСПРАВЛЕНИЕ: Валидация возможности отмены ***
                 if (stageExecution.Status != StageExecutionStatus.Pending &&
                     stageExecution.Status != StageExecutionStatus.Waiting)
                 {
-                    throw new Exception("Cannot cancel: stage is not in Pending or Waiting status");
+                    throw new Exception($"Cannot cancel stage in status: {stageExecution.Status}");
                 }
 
                 // Создаем новый статус для отмененных этапов
-                // В идеале его следует добавить в перечисление StageExecutionStatus
                 stageExecution.Status = StageExecutionStatus.Error; // Используем Error как "Cancelled"
                 stageExecution.StatusChangedTimeUtc = DateTime.UtcNow;
                 stageExecution.ReasonNote = reason;
@@ -367,6 +502,15 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
+                // *** ИСПРАВЛЕНИЕ: Логируем отмену этапа ***
+                await _eventLogService.LogStageCancelledAsync(
+                    stageExecutionId,
+                    reason,
+                    operatorId,
+                    operatorId, // operatorName
+                    deviceId,
+                    isAutomatic: string.IsNullOrEmpty(operatorId));
+
                 _logger.LogInformation("Этап {StageId} отменен. Причина: {Reason}", stageExecutionId, reason);
             }
             catch (Exception ex)
@@ -375,8 +519,6 @@ namespace Project.Application.Services
                 throw;
             }
         }
-    
-
 
         // Проверка, что все предыдущие этапы завершены
         private async Task<bool> CheckAllPreviousStagesCompleted(StageExecution stageExecution)
@@ -481,5 +623,4 @@ namespace Project.Application.Services
             }
         }
     }
-
 }
