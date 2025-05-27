@@ -367,24 +367,25 @@
             batches: @Html.Raw(Json.Serialize(Model.Batches ?? new List<BatchDto>())),
             ganttStages: @Html.Raw(Json.Serialize(Model.GanttStages ?? new List<GanttStageDto>())),
             queueItems: @Html.Raw(Json.Serialize(Model.QueueItems ?? new List<StageQueueDto>()))
-        };
+                };
 
         // Глобальная переменная для диаграммы Ганта
         window.dashboardData = window.initialData;
 
-        // Инициализация расширенной диаграммы Ганта
-        let enhancedGanttChart;
+        console.log('Данные загружены:', window.dashboardData);
 
-        $(document).ready(function() {
-            console.log('Document ready, initializing enhanced dashboard...');
+        $(document).ready(function () {
+            console.log('Document ready, initializing dashboard...');
 
-            // Инициализируем расширенную диаграмму Ганта
-            enhancedGanttChart = new EnhancedGanttChart('gantt-container');
+            // Проверяем данные
+            console.log('Gantt stages:', window.dashboardData.ganttStages.length);
+            console.log('Machines:', window.dashboardData.machines.length);
+            console.log('Batches:', window.dashboardData.batches.length);
 
             // Ждем полной загрузки данных
             setTimeout(() => {
                 updateStatisticsCards();
-                renderEnhancedGanttChart();
+                renderSimpleGantt();
             }, 100);
         });
 

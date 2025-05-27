@@ -16,7 +16,6 @@ namespace Project.Application.Services
         private readonly IRouteRepository _routeRepo;
         private readonly ISetupTimeRepository _setupTimeRepo;
         private readonly StageExecutionService _stageService;
-        private readonly EventLogService _eventLogService; // *** ИСПРАВЛЕНИЕ: Добавлен EventLogService ***
         private readonly ILogger<ProductionSchedulerService> _logger;
 
         public ProductionSchedulerService(
@@ -25,7 +24,6 @@ namespace Project.Application.Services
             IRouteRepository routeRepo,
             ISetupTimeRepository setupTimeRepo,
             StageExecutionService stageService,
-            EventLogService eventLogService, // *** ИСПРАВЛЕНИЕ: Добавлен параметр ***
             ILogger<ProductionSchedulerService> logger)
         {
             _batchRepo = batchRepo;
@@ -33,7 +31,6 @@ namespace Project.Application.Services
             _routeRepo = routeRepo;
             _setupTimeRepo = setupTimeRepo;
             _stageService = stageService;
-            _eventLogService = eventLogService; // *** ИСПРАВЛЕНИЕ: Внедрение сервиса ***
             _logger = logger;
         }
 

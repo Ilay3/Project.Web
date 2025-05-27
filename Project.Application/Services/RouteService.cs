@@ -14,15 +14,18 @@ namespace Project.Application.Services
         private readonly IRouteRepository _repo;
         private readonly IDetailRepository _detailRepo;
         private readonly IMachineTypeRepository _machineTypeRepo;
+        private readonly IBatchRepository _batchRepo; // Добавляем для проверки связей
 
         public RouteService(
             IRouteRepository repo,
             IDetailRepository detailRepo,
-            IMachineTypeRepository machineTypeRepo)
+            IMachineTypeRepository machineTypeRepo,
+            IBatchRepository batchRepo)
         {
             _repo = repo;
             _detailRepo = detailRepo;
             _machineTypeRepo = machineTypeRepo;
+            _batchRepo = batchRepo;
         }
 
         public async Task<List<RouteDto>> GetAllAsync()
@@ -70,7 +73,6 @@ namespace Project.Application.Services
             };
         }
 
-        // Добавляем метод для получения маршрута по ID детали
         public async Task<RouteDto?> GetByDetailIdAsync(int detailId)
         {
             var r = await _repo.GetByDetailIdAsync(detailId);
@@ -96,12 +98,10 @@ namespace Project.Application.Services
 
         public async Task AddAsync(RouteCreateDto dto)
         {
-            // Проверяем, что деталь существует
             var detail = await _detailRepo.GetByIdAsync(dto.DetailId);
             if (detail == null)
                 throw new Exception($"Detail with ID {dto.DetailId} not found");
 
-            // Проверяем, что для этой детали ещё нет маршрута
             var existingRoute = await _repo.GetByDetailIdAsync(dto.DetailId);
             if (existingRoute != null)
                 throw new Exception($"Route for detail {detail.Name} already exists");
@@ -115,7 +115,7 @@ namespace Project.Application.Services
                     Name = s.Name,
                     MachineTypeId = s.MachineTypeId,
                     NormTime = s.NormTime,
-                    SetupTime = s.SetupTime,
+                    SetupTime = 0, // Убираем время переналадки из создания этапов
                     StageType = s.StageType
                 }).ToList()
             };
@@ -128,6 +128,13 @@ namespace Project.Application.Services
             var entity = await _repo.GetByIdAsync(dto.Id);
             if (entity == null) throw new Exception("Route not found");
 
+            // Проверяем, есть ли активные StageExecutions для этого маршрута
+            var hasActiveStageExecutions = await HasActiveStageExecutionsAsync(dto.Id);
+            if (hasActiveStageExecutions)
+            {
+                throw new Exception("Нельзя изменить маршрут, так как по нему выполняются или уже выполнены этапы производства. Создайте новый маршрут или дождитесь завершения всех партий.");
+            }
+
             // Проверяем, что деталь существует, если меняется
             if (entity.DetailId != dto.DetailId)
             {
@@ -135,7 +142,6 @@ namespace Project.Application.Services
                 if (detail == null)
                     throw new Exception($"Detail with ID {dto.DetailId} not found");
 
-                // Проверяем, что для новой детали ещё нет маршрута
                 var existingRoute = await _repo.GetByDetailIdAsync(dto.DetailId);
                 if (existingRoute != null && existingRoute.Id != dto.Id)
                     throw new Exception($"Route for detail {detail.Name} already exists");
@@ -143,11 +149,10 @@ namespace Project.Application.Services
                 entity.DetailId = dto.DetailId;
             }
 
-            // Полная перезапись этапов:
+            // Безопасное обновление этапов - только если нет активных исполнений
             entity.Stages.Clear();
             foreach (var s in dto.Stages)
             {
-                // Проверяем, что тип станка существует
                 var machineType = await _machineTypeRepo.GetByIdAsync(s.MachineTypeId);
                 if (machineType == null)
                     throw new Exception($"Machine type with ID {s.MachineTypeId} not found");
@@ -158,7 +163,7 @@ namespace Project.Application.Services
                     Name = s.Name,
                     MachineTypeId = s.MachineTypeId,
                     NormTime = s.NormTime,
-                    SetupTime = s.SetupTime,
+                    SetupTime = 0, // Убираем время переналадки
                     StageType = s.StageType
                 });
             }
@@ -170,7 +175,43 @@ namespace Project.Application.Services
             var route = await _repo.GetByIdAsync(id);
             if (route == null) throw new Exception("Route not found");
 
+            // Проверяем, есть ли активные StageExecutions для этого маршрута
+            var hasActiveStageExecutions = await HasActiveStageExecutionsAsync(id);
+            if (hasActiveStageExecutions)
+            {
+                throw new Exception("Нельзя удалить маршрут, так как по нему выполняются или уже выполнены этапы производства.");
+            }
+
             await _repo.DeleteAsync(id);
+        }
+
+        /// <summary>
+        /// Проверяет, есть ли активные или завершенные этапы по данному маршруту
+        /// </summary>
+        private async Task<bool> HasActiveStageExecutionsAsync(int routeId)
+        {
+            try
+            {
+                var allStageExecutions = await _batchRepo.GetAllStageExecutionsAsync();
+
+                // Проверяем, есть ли этапы выполнения, которые ссылаются на этапы данного маршрута
+                var route = await _repo.GetByIdAsync(routeId);
+                if (route == null) return false;
+
+                var routeStageIds = route.Stages.Select(s => s.Id).ToList();
+
+                return allStageExecutions.Any(se =>
+                    routeStageIds.Contains(se.RouteStageId) &&
+                    (se.Status == StageExecutionStatus.InProgress ||
+                     se.Status == StageExecutionStatus.Completed ||
+                     se.Status == StageExecutionStatus.Paused ||
+                     se.Status == StageExecutionStatus.Waiting));
+            }
+            catch
+            {
+                // В случае ошибки лучше перестраховаться
+                return true;
+            }
         }
     }
 }

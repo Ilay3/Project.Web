@@ -17,7 +17,6 @@ namespace Project.Application.Services
         private readonly IBatchRepository _batchRepo;
         private readonly ISetupTimeRepository _setupTimeRepo;
         private readonly IDetailRepository _detailRepo;
-        private readonly EventLogService _eventLogService;
         private readonly ILogger<StageExecutionService> _logger;
 
         private readonly object _lockObject = new object();
@@ -28,7 +27,6 @@ namespace Project.Application.Services
             IBatchRepository batchRepo,
             ISetupTimeRepository setupTimeRepo,
             IDetailRepository detailRepo,
-            EventLogService eventLogService,
             ILogger<StageExecutionService> logger)
         {
             _routeRepo = routeRepo;
@@ -36,7 +34,6 @@ namespace Project.Application.Services
             _batchRepo = batchRepo;
             _setupTimeRepo = setupTimeRepo;
             _detailRepo = detailRepo;
-            _eventLogService = eventLogService;
             _logger = logger;
         }
 
@@ -74,11 +71,6 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateSubBatchAsync(subBatch);
 
-                // Логируем создание этапов
-                foreach (var stageExecution in subBatch.StageExecutions.Where(se => !se.IsSetup))
-                {
-                    await _eventLogService.LogStageCreatedAsync(stageExecution.Id, isAutomatic: true);
-                }
 
                 _logger.LogInformation("Созданы этапы для подпартии {SubBatchId}: {Count} этапов",
                     subBatchId, subBatch.StageExecutions.Count);
@@ -130,16 +122,6 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                // Логируем назначение на станок
-                await _eventLogService.LogStageAssignedAsync(stageExecution.Id, machineId, isAutomatic: true);
-
-                // Логируем переназначение, если был другой станок
-                if (previousMachineId.HasValue && previousMachineId.Value != machineId)
-                {
-                    await _eventLogService.LogStageReassignedAsync(
-                        stageExecution.Id, previousMachineId.Value, machineId,
-                        "Automatic reassignment", isAutomatic: true);
-                }
 
                 _logger.LogInformation("Этап {StageId} назначен на станок {MachineId}",
                     stageExecutionId, machineId);
@@ -259,12 +241,7 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                // 7. Логирование
-                await _eventLogService.LogStageStartedAsync(
-                    stageExecutionId, operatorId, operatorId, deviceId,
-                    timeInPreviousState: timeInPreviousState,
-                    isAutomatic: string.IsNullOrEmpty(operatorId));
-
+                
                 _logger.LogInformation("Этап {StageId} успешно запущен", stageExecutionId);
             }
             catch (Exception ex)
@@ -324,16 +301,6 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                // 5. Логирование
-                await _eventLogService.LogStagePausedAsync(
-                    stageExecutionId,
-                    reasonNote ?? "Приостановлен",
-                    operatorId,
-                    operatorId,
-                    deviceId,
-                    timeInProgress,
-                    isAutomatic: string.IsNullOrEmpty(operatorId));
-
                 _logger.LogInformation("Этап {StageId} приостановлен", stageExecutionId);
             }
             catch (Exception ex)
@@ -376,9 +343,6 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                await _eventLogService.LogStageResumedAsync(
-                    stageExecutionId, operatorId, operatorId, deviceId, reasonNote, timeInPause,
-                    isAutomatic: string.IsNullOrEmpty(operatorId));
 
                 _logger.LogInformation("Этап {StageId} возобновлен", stageExecutionId);
             }
@@ -423,10 +387,7 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                await _eventLogService.LogStageCompletedAsync(
-                    stageExecutionId, operatorId, operatorId, deviceId, reasonNote, timeInProgress,
-                    isAutomatic: string.IsNullOrEmpty(operatorId));
-
+                
                 _logger.LogInformation("Этап {StageId} завершен", stageExecutionId);
 
                 // После завершения переналадки делаем доступным основной этап
@@ -476,9 +437,6 @@ namespace Project.Application.Services
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
 
-                await _eventLogService.LogStageCancelledAsync(
-                    stageExecutionId, reason, operatorId, operatorId, deviceId,
-                    isAutomatic: string.IsNullOrEmpty(operatorId));
 
                 _logger.LogInformation("Этап {StageId} отменен", stageExecutionId);
             }
@@ -597,7 +555,6 @@ namespace Project.Application.Services
                 subBatch.StageExecutions.Add(setupStage);
                 await _batchRepo.UpdateSubBatchAsync(subBatch);
 
-                await _eventLogService.LogStageCreatedAsync(setupStage.Id, isAutomatic: true);
 
                 return setupStage;
             }

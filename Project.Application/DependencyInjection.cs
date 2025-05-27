@@ -18,9 +18,7 @@ namespace Project.Application
             services.AddScoped<StageExecutionService>();
             services.AddScoped<HistoryService>();
             services.AddScoped<SetupTimeService>();
-            services.AddScoped<PlanningService>();
             services.AddScoped<ProductionSchedulerService>();
-            services.AddScoped<EventLogService>();
 
             // Регистрация фоновых служб
             services.AddHostedService<ProductionSchedulerBackgroundService>();
