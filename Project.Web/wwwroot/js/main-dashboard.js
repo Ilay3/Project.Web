@@ -311,9 +311,7 @@ function renderMachines() {
                         <button class="btn btn-sm btn-outline-primary" onclick="editMachine(${machine.id})">
                             <i class="bi bi-pencil"></i> Изменить
                         </button>
-                        <button class="btn btn-sm btn-outline-success" onclick="showMachineWorkspace(${machine.id})">
-                            <i class="bi bi-tools"></i> Рабочее место
-                        </button>
+                       
                     </div>
                 </div>
             </div>
