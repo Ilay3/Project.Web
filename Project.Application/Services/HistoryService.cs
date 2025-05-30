@@ -22,7 +22,7 @@ namespace Project.Application.Services
         }
 
         // Получение истории выполнения этапов
-        public async Task<List<StageHistoryDto>> GetStageExecutionHistoryAsync(StageHistoryFilterDto filter)
+        public async Task<List<HistoryDto>> GetStageExecutionHistoryAsync(StageHistoryFilterDto filter)
         {
             var stageExecutions = await _batchRepo.GetStageExecutionHistoryAsync(
                 filter.StartDate,
@@ -45,7 +45,7 @@ namespace Project.Application.Services
                 filtered = filtered.Where(se => se.Status.ToString() == filter.StatusFilter);
             }
 
-            return filtered.Select(se => new StageHistoryDto
+            return filtered.Select(se => new HistoryDto
             {
                 Id = se.Id,
                 SubBatchId = se.SubBatchId,

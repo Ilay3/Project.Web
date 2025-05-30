@@ -169,7 +169,7 @@ namespace Project.Web.Controllers
             }
         }
 
-        private double CalculateMachineEfficiency(int machineId, List<GanttStageDto> stages)
+        private double CalculateMachineEfficiency(int machineId, List<GanttDto> stages)
         {
             var today = DateTime.Today;
             var todayStages = stages.Where(s =>
@@ -190,14 +190,14 @@ namespace Project.Web.Controllers
             return totalTime > 0 ? Math.Round((workingTime / totalTime) * 100, 1) : 0;
         }
 
-        private DateTime? GetLastActivity(int machineId, List<GanttStageDto> stages)
+        private DateTime? GetLastActivity(int machineId, List<GanttDto> stages)
         {
             return stages.Where(s => s.MachineId == machineId && s.EndTime.HasValue)
                         .OrderByDescending(s => s.EndTime)
                         .FirstOrDefault()?.EndTime;
         }
 
-        private object GetRecentActivity(int machineId, List<GanttStageDto> stages)
+        private object GetRecentActivity(int machineId, List<GanttDto> stages)
         {
             var recentStages = stages.Where(s => s.MachineId == machineId && s.EndTime.HasValue)
                                    .OrderByDescending(s => s.EndTime)

@@ -365,7 +365,7 @@
             machineTypes: @Html.Raw(Json.Serialize(Model.MachineTypes ?? new List<MachineTypeDto>())),
             machines: @Html.Raw(Json.Serialize(Model.Machines ?? new List<MachineDto>())),
             batches: @Html.Raw(Json.Serialize(Model.Batches ?? new List<BatchDto>())),
-            ganttStages: @Html.Raw(Json.Serialize(Model.GanttStages ?? new List<GanttStageDto>())),
+            ganttStages: @Html.Raw(Json.Serialize(Model.GanttStages ?? new List<GanttDto>())),
             queueItems: @Html.Raw(Json.Serialize(Model.QueueItems ?? new List<StageQueueDto>()))
                 };
 
