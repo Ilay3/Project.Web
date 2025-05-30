@@ -28,7 +28,7 @@ namespace Project.Application.BackgroundServices
         private readonly TimeSpan _dinnerStart = new TimeSpan(21, 0, 0); // 21:00
         private readonly TimeSpan _dinnerEnd = new TimeSpan(21, 30, 0);  // 21:30
 
-        // Тайм-зона предприятия (можно настроить через конфигурацию)
+        // Тайм-зона предприятия
         private readonly TimeZoneInfo _enterpriseTimeZone = TimeZoneInfo.Local;
 
         public ProductionSchedulerBackgroundService(
@@ -43,7 +43,7 @@ namespace Project.Application.BackgroundServices
         {
             _logger.LogInformation("Служба автоматического планирования производства запущена");
 
-            // Ждем немного, чтобы приложение полностью инициализировалось
+            // Ждем инициализации приложения
             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -57,7 +57,6 @@ namespace Project.Application.BackgroundServices
                     _logger.LogError(ex, "Критическая ошибка в цикле планирования производства");
                 }
 
-                // Ожидание перед следующей проверкой
                 try
                 {
                     await Task.Delay(_checkInterval, stoppingToken);
@@ -111,7 +110,7 @@ namespace Project.Application.BackgroundServices
                 await ProcessCompletedStagesAsync(schedulerService, batchRepo);
 
                 // 7. ОПТИМИЗАЦИЯ ПЛАНИРОВАНИЯ (в рабочее время, раз в 5 минут)
-                if (isWorkingTime && DateTime.UtcNow.Minute % 5 == 0)
+                if (isWorkingTime && currentTime.Minute % 5 == 0)
                 {
                     await OptimizeSchedulingAsync(schedulerService);
                 }
@@ -133,13 +132,16 @@ namespace Project.Application.BackgroundServices
 
                 var overdueStages = inProgressStages.Where(s =>
                     s.Status == Domain.Entities.StageExecutionStatus.InProgress &&
-                    s.IsOverdue).ToList();
+                    s.StartTimeUtc.HasValue &&
+                    IsStageOverdue(s)).ToList();
 
                 foreach (var stage in overdueStages)
                 {
                     try
                     {
-                        var overdueTime = stage.TimeDeviation ?? TimeSpan.Zero;
+                        var elapsed = DateTime.UtcNow - stage.StartTimeUtc.Value;
+                        var plannedDuration = CalculatePlannedDuration(stage);
+                        var overdueTime = elapsed - plannedDuration;
 
                         _logger.LogWarning("Автозавершение просроченного этапа {StageId}. " +
                             "Просрочка: {OverdueHours:F1} часов", stage.Id, overdueTime.TotalHours);
@@ -302,19 +304,16 @@ namespace Project.Application.BackgroundServices
                     {
                         bool canStart = await schedulerService.CanStartStageAsync(stage.Id);
 
-                        if (canStart)
+                        if (canStart && stage.MachineId.HasValue)
                         {
                             _logger.LogDebug("Автоматический запуск готового этапа: {StageId}", stage.Id);
 
-                            if (stage.MachineId.HasValue)
-                            {
-                                var started = await schedulerService.StartPendingStageAsync(stage.Id);
-                                if (started) startedCount++;
-                            }
-                            else
-                            {
-                                await schedulerService.ScheduleStageExecutionAsync(stage.Id);
-                            }
+                            var started = await schedulerService.StartPendingStageAsync(stage.Id);
+                            if (started) startedCount++;
+                        }
+                        else if (!stage.MachineId.HasValue)
+                        {
+                            await schedulerService.ScheduleStageExecutionAsync(stage.Id);
                         }
                     }
                     catch (Exception ex)
@@ -400,7 +399,8 @@ namespace Project.Application.BackgroundServices
             if (stage.StartTimeUtc.HasValue)
             {
                 var elapsed = DateTime.UtcNow - stage.StartTimeUtc.Value;
-                var remaining = stage.PlannedDuration - elapsed;
+                var plannedDuration = CalculatePlannedDuration(stage);
+                var remaining = plannedDuration - elapsed;
 
                 if (remaining <= TimeSpan.FromMinutes(30)) return true;
             }
@@ -428,6 +428,32 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
+        /// Проверка просрочки этапа (согласно ТЗ: более 2 часов сверх нормы)
+        /// </summary>
+        private bool IsStageOverdue(Domain.Entities.StageExecution stage)
+        {
+            if (!stage.StartTimeUtc.HasValue) return false;
+
+            var elapsed = DateTime.UtcNow - stage.StartTimeUtc.Value;
+            var plannedDuration = CalculatePlannedDuration(stage);
+            var overdueTime = elapsed - plannedDuration;
+
+            return overdueTime.TotalHours > 2; // Согласно ТЗ: более 2 часов сверх нормы
+        }
+
+        /// <summary>
+        /// Расчет планового времени выполнения этапа
+        /// </summary>
+        private TimeSpan CalculatePlannedDuration(Domain.Entities.StageExecution stage)
+        {
+            if (stage.RouteStage == null) return TimeSpan.FromHours(1); // По умолчанию
+
+            return stage.IsSetup
+                ? TimeSpan.FromHours(stage.RouteStage.SetupTime)
+                : TimeSpan.FromHours(stage.RouteStage.NormTime * (stage.SubBatch?.Quantity ?? 1));
+        }
+
+        /// <summary>
         /// Получение текущего времени предприятия
         /// </summary>
         private DateTime GetCurrentEnterpriseTime()
@@ -448,40 +474,29 @@ namespace Project.Application.BackgroundServices
                 // Не работаем в выходные (согласно ТЗ: суббота, воскресенье)
                 if (dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday)
                 {
-                    _logger.LogDebug("Выходной день: {DayOfWeek}", dayOfWeek);
                     return false;
                 }
 
                 // Обеденный перерыв 12:00-13:00 (согласно ТЗ)
                 if (timeOfDay >= _lunchStart && timeOfDay < _lunchEnd)
                 {
-                    _logger.LogDebug("Обеденный перерыв: {Time}", timeOfDay);
                     return false;
                 }
 
                 // Перерыв на ужин 21:00-21:30 (согласно ТЗ)
                 if (timeOfDay >= _dinnerStart && timeOfDay < _dinnerEnd)
                 {
-                    _logger.LogDebug("Перерыв на ужин: {Time}", timeOfDay);
                     return false;
                 }
 
                 // Рабочее время: 08:00-01:30 следующего дня (согласно ТЗ)
-                // Обрабатываем переход через полночь
-                if (_workEnd < _workStart) // переход через полночь
+                // Переход через полночь
+                if (timeOfDay >= _workStart || timeOfDay <= _workEnd)
                 {
-                    var isWorking = timeOfDay >= _workStart || timeOfDay <= _workEnd;
-                    _logger.LogDebug("Проверка рабочего времени с переходом через полночь: {Time}, результат: {IsWorking}",
-                        timeOfDay, isWorking);
-                    return isWorking;
+                    return true;
                 }
-                else
-                {
-                    var isWorking = timeOfDay >= _workStart && timeOfDay <= _workEnd;
-                    _logger.LogDebug("Проверка рабочего времени: {Time}, результат: {IsWorking}",
-                        timeOfDay, isWorking);
-                    return isWorking;
-                }
+
+                return false;
             }
             catch (Exception ex)
             {

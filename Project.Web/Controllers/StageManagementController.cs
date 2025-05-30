@@ -32,6 +32,26 @@ namespace Project.Web.Controllers
         {
             try
             {
+                // Проверяем существование этапа
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageId);
+                if (stage == null)
+                {
+                    return NotFound(new { success = false, message = "Этап не найден" });
+                }
+
+                // Проверяем возможность запуска
+                if (stage.Status != Domain.Entities.StageExecutionStatus.Pending &&
+                    stage.Status != Domain.Entities.StageExecutionStatus.Paused)
+                {
+                    return BadRequest(new { success = false, message = $"Нельзя запустить этап в статусе: {GetStatusDisplayName(stage.Status.ToString())}" });
+                }
+
+                // Проверяем назначение на станок
+                if (!stage.MachineId.HasValue)
+                {
+                    return BadRequest(new { success = false, message = "Этап не назначен на станок. Сначала назначьте станок." });
+                }
+
                 await _stageService.StartStageExecution(
                     stageId,
                     request?.OperatorId ?? "MANUAL",
@@ -44,6 +64,7 @@ namespace Project.Web.Controllers
                 return BadRequest(new { success = false, message = $"Ошибка при запуске этапа: {ex.Message}" });
             }
         }
+
 
         /// <summary>
         /// Приостановка этапа
@@ -144,8 +165,40 @@ namespace Project.Web.Controllers
         {
             try
             {
+                if (request?.MachineId == null || request.MachineId <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Не указан станок" });
+                }
+
+                // Проверяем существование этапа
+                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageId);
+                if (stage == null)
+                {
+                    return NotFound(new { success = false, message = "Этап не найден" });
+                }
+
+                // Проверяем, можно ли назначить этап
+                if (stage.Status == Domain.Entities.StageExecutionStatus.Completed)
+                {
+                    return BadRequest(new { success = false, message = "Нельзя переназначить завершенный этап" });
+                }
+
+                // Получаем доступные станки для этого этапа
+                var availableMachines = await _batchRepo.GetAvailableMachinesForStageAsync(stageId);
+                var targetMachine = availableMachines.FirstOrDefault(m => m.Id == request.MachineId);
+
+                if (targetMachine == null)
+                {
+                    return BadRequest(new { success = false, message = "Выбранный станок недоступен для этого этапа" });
+                }
+
                 await _stageService.AssignStageToMachine(stageId, request.MachineId);
-                return Ok(new { success = true, message = "Этап назначен на станок" });
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Этап назначен на станок '{targetMachine.Name}'"
+                });
             }
             catch (Exception ex)
             {

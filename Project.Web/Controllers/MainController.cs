@@ -291,8 +291,60 @@ namespace Project.Web.Controllers
         {
             try
             {
+                // Дополнительная валидация
+                if (dto.DetailId <= 0)
+                {
+                    return Json(new { success = false, message = "Не выбрана деталь" });
+                }
+
+                if (dto.Quantity <= 0)
+                {
+                    return Json(new { success = false, message = "Количество должно быть больше 0" });
+                }
+
+                // Проверяем, что деталь существует
+                var detail = await _detailService.GetByIdAsync(dto.DetailId);
+                if (detail == null)
+                {
+                    return Json(new { success = false, message = "Деталь не найдена" });
+                }
+
+                // Проверяем, что у детали есть маршрут
+                var route = await _routeService.GetByDetailIdAsync(dto.DetailId);
+                if (route == null)
+                {
+                    return Json(new { success = false, message = $"Для детали '{detail.Name}' не создан маршрут изготовления" });
+                }
+
+                if (route.Stages == null || !route.Stages.Any())
+                {
+                    return Json(new { success = false, message = $"Маршрут детали '{detail.Name}' не содержит этапов" });
+                }
+
+                // Валидация подпартий
+                if (dto.SubBatches != null && dto.SubBatches.Any())
+                {
+                    var totalSubQuantity = dto.SubBatches.Sum(sb => sb.Quantity);
+                    if (totalSubQuantity != dto.Quantity)
+                    {
+                        return Json(new { success = false, message = $"Сумма подпартий ({totalSubQuantity}) не равна общему количеству ({dto.Quantity})" });
+                    }
+
+                    if (dto.SubBatches.Any(sb => sb.Quantity <= 0))
+                    {
+                        return Json(new { success = false, message = "Количество в подпартиях должно быть больше 0" });
+                    }
+                }
+
+                // Создаем партию через планировщик (он создаст этапы и запланирует их)
                 var batchId = await _schedulerService.CreateBatchAsync(dto);
-                return Json(new { success = true, message = "Партия успешно создана", batchId = batchId });
+
+                return Json(new
+                {
+                    success = true,
+                    message = "Партия успешно создана и запланирована",
+                    batchId = batchId
+                });
             }
             catch (Exception ex)
             {
@@ -464,34 +516,30 @@ namespace Project.Web.Controllers
         /// <summary>
         /// Получение доступных станков для этапа
         /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> GetAvailableMachinesForStage(int stageId)
+        [HttpGet("{stageId}/available-machines")]
+        public async Task<IActionResult> GetAvailableMachines(int stageId)
         {
             try
             {
-                // Получаем этап через BatchRepository напрямую
-                var stage = await _batchRepo.GetStageExecutionByIdAsync(stageId);
-                if (stage == null)
-                    return Json(new List<object>());
-
-                // Получаем подходящие станки через MachineService
-                var machines = await _machineService.GetMachinesByTypeAsync(stage.RouteStage.MachineTypeId);
+                var machines = await _batchRepo.GetAvailableMachinesForStageAsync(stageId);
 
                 var result = machines.Select(m => new {
                     id = m.Id,
                     name = m.Name,
                     inventoryNumber = m.InventoryNumber,
-                    machineTypeName = m.MachineTypeName,
-                    priority = m.Priority
+                    machineTypeName = m.MachineType?.Name,
+                    priority = m.Priority,
+                    isAvailable = true // Все возвращаемые станки доступны
                 });
 
-                return Json(result);
+                return Ok(new { success = true, data = result });
             }
             catch (Exception ex)
             {
-                return Json(new List<object>());
+                return BadRequest(new { success = false, message = ex.Message });
             }
         }
+
 
 
         /// <summary>
@@ -526,25 +574,28 @@ namespace Project.Web.Controllers
         {
             try
             {
-                // Сначала пытаемся автоматически назначить станок, если он не назначен
-                await _schedulerService.AutoAssignMachineToStageAsync(stageId);
+                // Проверяем, можно ли запустить этап
+                var canStart = await _schedulerService.CanStartStageAsync(stageId);
+                if (!canStart)
+                {
+                    // Пытаемся автоматически назначить станок, если он не назначен
+                    var assigned = await _schedulerService.AutoAssignMachineToStageAsync(stageId);
+                    if (!assigned)
+                    {
+                        return Json(new { success = false, message = "Невозможно назначить станок для этапа" });
+                    }
+                }
 
-                // Затем запускаем этап
-                var result = await _schedulerService.StartPendingStageAsync(stageId);
-                if (result)
-                {
-                    return Json(new { success = true, message = "Этап запущен в работу" });
-                }
-                else
-                {
-                    return Json(new { success = false, message = "Не удалось запустить этап. Проверьте предыдущие этапы." });
-                }
+                // Запускаем этап
+                await _stageService.StartStageExecution(stageId, "MANUAL_WEB", "WEB_INTERFACE");
+                return Json(new { success = true, message = "Этап запущен в работу" });
             }
             catch (Exception ex)
             {
                 return Json(new { success = false, message = ex.Message });
             }
         }
+
 
         /// <summary>
         /// Получение статистики по станкам
@@ -589,6 +640,44 @@ namespace Project.Web.Controllers
             catch (Exception ex)
             {
                 return Json(new List<object>());
+            }
+        }
+
+
+        [HttpGet]
+        public async Task<IActionResult> GetSchedulerStatus()
+        {
+            try
+            {
+                var allStages = await _batchRepo.GetAllStageExecutionsAsync();
+
+                var statistics = new
+                {
+                    totalStages = allStages.Count,
+                    pendingStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.Pending),
+                    inProgressStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.InProgress),
+                    queuedStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.Waiting),
+                    completedStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.Completed),
+                    pausedStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.Paused),
+                    errorStages = allStages.Count(s => s.Status == Domain.Entities.StageExecutionStatus.Error),
+                    setupStages = allStages.Count(s => s.IsSetup),
+                    overdueStages = allStages.Count(s => s.IsOverdue),
+                    unassignedStages = allStages.Count(s => !s.MachineId.HasValue),
+
+                    workingMachines = allStages
+                        .Where(s => s.Status == Domain.Entities.StageExecutionStatus.InProgress && s.MachineId.HasValue)
+                        .Select(s => s.MachineId.Value)
+                        .Distinct()
+                        .Count(),
+
+                    lastUpdate = DateTime.UtcNow
+                };
+
+                return Json(new { success = true, data = statistics });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
             }
         }
 

@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Project.Application.Services;
 using Project.Contracts.ModelDTO;
+using Project.Infrastructure.Repositories;
 using Project.Web.ViewModels;
 using System;
 using System.Linq;
@@ -15,15 +16,18 @@ namespace Project.Web.Controllers
         private readonly ProductionSchedulerService _schedulerService;
         private readonly BatchService _batchService;
         private readonly StageExecutionService _stageService;
+        private readonly BatchRepository _batchRepo;
 
         public AutoSchedulerController(
             ProductionSchedulerService schedulerService,
             BatchService batchService,
-            StageExecutionService stageService)
+            StageExecutionService stageService,
+            BatchRepository batchRepository)
         {
             _schedulerService = schedulerService;
             _batchService = batchService;
             _stageService = stageService;
+            _batchRepo = batchRepository;
         }
 
         /// <summary>
@@ -124,7 +128,7 @@ namespace Project.Web.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(new { success = false, message = ex.Message });
+                return BadRequest(new { success = false, message = $"Ошибка при разрешении конфликтов: {ex.Message}" });
             }
         }
 
@@ -161,12 +165,136 @@ namespace Project.Web.Controllers
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }
-    }
 
-    public class CancelStageRequest
-    {
-        public string Reason { get; set; }
-        public string OperatorId { get; set; }
-        public string DeviceId { get; set; }
+
+
+
+        /// <summary>
+        /// Получает статистику планировщика
+        /// </summary>
+        [HttpGet("status")]
+        public async Task<IActionResult> GetSchedulerStatus()
+        {
+            try
+            {
+                var statistics = await _stageService.GetExecutionStatisticsAsync();
+                return Ok(new { success = true, data = statistics });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Массовые операции над этапами
+        /// </summary>
+        [HttpPost("bulk-actions")]
+        public async Task<IActionResult> BulkActions([FromBody] BulkActionRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Action))
+                {
+                    return BadRequest(new { success = false, message = "Не указано действие" });
+                }
+
+                var result = await ProcessBulkActionAsync(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        private async Task<object> ProcessBulkActionAsync(BulkActionRequest request)
+        {
+            var affectedStages = 0;
+            var errors = new List<string>();
+
+            // Получаем этапы для обработки (можно расширить логику выбора)
+            var stages = await _batchRepo.GetAllStageExecutionsAsync();
+            var targetStages = stages.Where(s => request.StageIds == null ||
+                                                request.StageIds.Contains(s.Id)).ToList();
+
+            foreach (var stage in targetStages)
+            {
+                try
+                {
+                    bool actionPerformed = false;
+
+                    switch (request.Action.ToLower())
+                    {
+                        case "start":
+                            if (stage.Status == Domain.Entities.StageExecutionStatus.Pending && stage.MachineId.HasValue)
+                            {
+                                await _stageService.StartStageExecution(stage.Id, "BULK_ACTION", "WEB");
+                                actionPerformed = true;
+                            }
+                            break;
+
+                        case "pause":
+                            if (stage.Status == Domain.Entities.StageExecutionStatus.InProgress)
+                            {
+                                await _stageService.PauseStageExecution(stage.Id, "BULK_ACTION",
+                                    request.Reason ?? "Массовая приостановка", "WEB");
+                                actionPerformed = true;
+                            }
+                            break;
+
+                        case "resume":
+                            if (stage.Status == Domain.Entities.StageExecutionStatus.Paused)
+                            {
+                                await _stageService.ResumeStageExecution(stage.Id, "BULK_ACTION",
+                                    request.Reason ?? "Массовое возобновление", "WEB");
+                                actionPerformed = true;
+                            }
+                            break;
+
+                        case "auto-assign":
+                            if (stage.Status == Domain.Entities.StageExecutionStatus.Pending && !stage.MachineId.HasValue)
+                            {
+                                var assigned = await _schedulerService.AutoAssignMachineToStageAsync(stage.Id);
+                                if (assigned) actionPerformed = true;
+                            }
+                            break;
+                    }
+
+                    if (actionPerformed)
+                    {
+                        affectedStages++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Этап {stage.Id}: {ex.Message}");
+                }
+            }
+
+            return new
+            {
+                success = true,
+                affectedStages = affectedStages,
+                errors = errors,
+                message = $"Действие выполнено для {affectedStages} этапов"
+            };
+        }
+
+
+        public class BulkActionRequest
+        {
+            public string Action { get; set; } // start, pause, resume, auto-assign
+            public string Reason { get; set; }
+            public List<int> StageIds { get; set; } // Если null, то применяется ко всем подходящим этапам
+        }
+
+
+        public class CancelStageRequest
+        {
+            public string Reason { get; set; }
+            public string OperatorId { get; set; }
+            public string DeviceId { get; set; }
+        }
     }
 }

@@ -1221,5 +1221,112 @@ namespace Project.Application.Services
         }
 
         #endregion
+
+        #region Недостающие методы
+
+        /// <summary>
+        /// Разрешение конфликтов в расписании
+        /// </summary>
+        public async Task ResolveScheduleConflictsAsync()
+        {
+            try
+            {
+                var conflicts = await _batchRepo.GetScheduleConflictsAsync();
+                var resolvedCount = 0;
+
+                foreach (var conflict in conflicts)
+                {
+                    try
+                    {
+                        switch (conflict.ConflictType)
+                        {
+                            case "Overlap":
+                                await ResolveOverlapConflictAsync(conflict);
+                                resolvedCount++;
+                                break;
+                            case "DoubleBooking":
+                                await ResolveDoubleBookingConflictAsync(conflict);
+                                resolvedCount++;
+                                break;
+                            default:
+                                _logger.LogWarning("Неизвестный тип конфликта: {ConflictType}", conflict.ConflictType);
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при разрешении конфликта на станке {MachineId}", conflict.MachineId);
+                    }
+                }
+
+                _logger.LogInformation("Разрешено {Count} конфликтов в расписании", resolvedCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при разрешении конфликтов расписания");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Разрешение конфликта пересечения времени
+        /// </summary>
+        private async Task ResolveOverlapConflictAsync(ScheduleConflict conflict)
+        {
+            var stages = conflict.ConflictingStages.OrderBy(s => s.Priority).ThenBy(s => s.CreatedUtc).ToList();
+
+            for (int i = 1; i < stages.Count; i++)
+            {
+                var stage = stages[i];
+
+                // Пытаемся найти альтернативный станок
+                var availableMachines = await GetAvailableMachinesForStageAsync(stage);
+                if (availableMachines.Any())
+                {
+                    var alternativeMachine = await SelectOptimalMachineAsync(stage, availableMachines);
+                    await AssignStageToMachineAsync(stage, alternativeMachine);
+
+                    _logger.LogInformation("Этап {StageId} переназначен на станок {MachineId} для разрешения конфликта",
+                        stage.Id, alternativeMachine.Id);
+                }
+                else
+                {
+                    // Ставим в очередь
+                    await SetStageToWaitingQueue(stage);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Разрешение конфликта двойного назначения
+        /// </summary>
+        private async Task ResolveDoubleBookingConflictAsync(ScheduleConflict conflict)
+        {
+            var inProgressStages = conflict.ConflictingStages
+                .Where(s => s.Status == Domain.Entities.StageExecutionStatus.InProgress)
+                .ToList();
+
+            // Оставляем только один этап в работе (с наивысшим приоритетом)
+            var primaryStage = inProgressStages.OrderByDescending(s => s.Priority).First();
+
+            foreach (var stage in inProgressStages.Where(s => s.Id != primaryStage.Id))
+            {
+                await _stageService.PauseStageExecution(
+                    stage.Id,
+                    "CONFLICT_RESOLVER",
+                    "Приостановлен для разрешения конфликта двойного назначения",
+                    "AUTO_SCHEDULER");
+
+                // Пытаемся найти альтернативный станок
+                var availableMachines = await GetAvailableMachinesForStageAsync(stage);
+                if (availableMachines.Any())
+                {
+                    var alternativeMachine = await SelectOptimalMachineAsync(stage, availableMachines);
+                    await _stageService.AssignStageToMachine(stage.Id, alternativeMachine.Id);
+                }
+            }
+        }
+
+        #endregion
     }
 }

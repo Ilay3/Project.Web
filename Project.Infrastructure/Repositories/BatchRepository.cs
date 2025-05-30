@@ -215,8 +215,9 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.RouteStage)
                     .ThenInclude(rs => rs.MachineType)
                 .Include(se => se.Machine)
-                .Where(se => se.Status == StageExecutionStatus.Pending)
-                .OrderBy(se => se.Priority) // сначала по приоритету
+                .Where(se => se.Status == StageExecutionStatus.Pending &&
+                           se.MachineId.HasValue) // Только назначенные на станки
+                .OrderBy(se => se.Priority)
                 .ThenBy(se => se.SubBatch.Batch.CreatedUtc)
                 .ThenBy(se => se.RouteStage.Order)
                 .ToListAsync();
@@ -234,11 +235,30 @@ namespace Project.Infrastructure.Repositories
                 .Include(se => se.RouteStage)
                 .Include(se => se.Machine)
                 .Where(se => se.Status == StageExecutionStatus.Completed &&
+                            se.EndTimeUtc.HasValue &&
                             se.EndTimeUtc >= oneHourAgo &&
                             !se.IsProcessedByScheduler)
                 .OrderBy(se => se.EndTimeUtc)
                 .ToListAsync();
         }
+
+        public async Task<List<StageExecution>> GetAutoStartReadyStagesAsync()
+        {
+            return await _db.StageExecutions
+                .Include(se => se.SubBatch)
+                    .ThenInclude(sb => sb.Batch)
+                        .ThenInclude(b => b.Detail)
+                .Include(se => se.RouteStage)
+                    .ThenInclude(rs => rs.MachineType)
+                .Include(se => se.Machine)
+                .Where(se => se.Status == StageExecutionStatus.Pending &&
+                           se.MachineId.HasValue &&
+                           !se.IsSetup) // Исключаем переналадки для автозапуска
+                .OrderBy(se => se.Priority)
+                .ThenBy(se => se.PlannedStartTimeUtc ?? se.CreatedUtc)
+                .ToListAsync();
+        }
+
 
         // *** ИСПРАВЛЕНИЕ: Получение следующих доступных этапов для указанной подпартии ***
         public async Task<List<StageExecution>> GetNextAvailableStagesForSubBatchAsync(int subBatchId)

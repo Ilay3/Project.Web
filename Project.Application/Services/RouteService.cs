@@ -115,13 +115,14 @@ namespace Project.Application.Services
                     Name = s.Name,
                     MachineTypeId = s.MachineTypeId,
                     NormTime = s.NormTime,
-                    SetupTime = 0, // Убираем время переналадки из создания этапов
+                    SetupTime = s.SetupTime, // СОХРАНЯЕМ время переналадки из DTO
                     StageType = s.StageType
                 }).ToList()
             };
 
             await _repo.AddAsync(entity);
         }
+
 
         public async Task UpdateAsync(RouteEditDto dto)
         {
@@ -149,7 +150,7 @@ namespace Project.Application.Services
                 entity.DetailId = dto.DetailId;
             }
 
-            // Безопасное обновление этапов - только если нет активных исполнений
+            // Безопасное обновление этапов
             entity.Stages.Clear();
             foreach (var s in dto.Stages)
             {
@@ -163,12 +164,13 @@ namespace Project.Application.Services
                     Name = s.Name,
                     MachineTypeId = s.MachineTypeId,
                     NormTime = s.NormTime,
-                    SetupTime = 0, // Убираем время переналадки
+                    SetupTime = s.SetupTime, // СОХРАНЯЕМ время переналадки
                     StageType = s.StageType
                 });
             }
             await _repo.UpdateAsync(entity);
         }
+
 
         public async Task DeleteAsync(int id)
         {

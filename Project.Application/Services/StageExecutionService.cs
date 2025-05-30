@@ -204,7 +204,7 @@ namespace Project.Application.Services
         #region Управление выполнением этапов
 
         /// <summary>
-        /// ЗАПУСК ЭТАПА с полной валидацией согласно ТЗ
+        /// ЗАПУСК ЭТАПА с полной валидацией согласно ТЗ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
         /// </summary>
         public async Task StartStageExecution(int stageExecutionId, string operatorId = null, string deviceId = null)
         {
@@ -213,18 +213,15 @@ namespace Project.Application.Services
             try
             {
                 // Получаем этап с проверкой существования
-                lock (_lockObject)
-                {
-                    stageExecution = _batchRepo.GetStageExecutionByIdAsync(stageExecutionId).Result;
-                    if (stageExecution == null)
-                        throw new Exception($"Этап выполнения {stageExecutionId} не найден");
+                stageExecution = await _batchRepo.GetStageExecutionByIdAsync(stageExecutionId);
+                if (stageExecution == null)
+                    throw new Exception($"Этап выполнения {stageExecutionId} не найден");
 
-                    _logger.LogInformation("Запуск этапа {StageId} ({StageName}), текущий статус: {Status}",
-                        stageExecutionId, stageExecution.RouteStage?.Name, stageExecution.Status);
+                _logger.LogInformation("Запуск этапа {StageId} ({StageName}), текущий статус: {Status}",
+                    stageExecutionId, stageExecution.RouteStage?.Name, stageExecution.Status);
 
-                    // Валидация возможности запуска
-                    ValidateStageStart(stageExecution);
-                }
+                // Валидация возможности запуска
+                ValidateStageStart(stageExecution);
 
                 // Проверки вне рабочего времени (согласно ТЗ)
                 if (!IsWorkingTime(DateTime.Now) && !CanRunOutsideWorkingHours(stageExecution))
@@ -232,7 +229,7 @@ namespace Project.Application.Services
                     throw new Exception("Нельзя запустить этап вне рабочего времени");
                 }
 
-                // Проверка зависимостей (последовательность этапов)
+                // Проверка зависимостей (последовательность этапов) - только для основных этапов
                 if (!stageExecution.IsSetup)
                 {
                     var canStart = await CheckAllPreviousStagesCompleted(stageExecution);
@@ -264,9 +261,6 @@ namespace Project.Application.Services
 
                 // Обновление этапа
                 var previousStatus = stageExecution.Status;
-                var timeInPreviousState = stageExecution.StatusChangedTimeUtc.HasValue
-                    ? DateTime.UtcNow - stageExecution.StatusChangedTimeUtc.Value
-                    : (TimeSpan?)null;
 
                 stageExecution.Status = StageExecutionStatus.InProgress;
                 stageExecution.StartTimeUtc = DateTime.UtcNow;
@@ -274,7 +268,16 @@ namespace Project.Application.Services
                 stageExecution.StartAttempts = (stageExecution.StartAttempts ?? 0) + 1;
                 stageExecution.OperatorId = operatorId ?? "SYSTEM";
                 stageExecution.DeviceId = deviceId ?? "AUTO";
-                stageExecution.LastErrorMessage = null; // Очищаем предыдущие ошибки
+                stageExecution.LastErrorMessage = null;
+                stageExecution.ReasonNote = "Запущен в работу";
+
+                // Очищаем время паузы и возобновления при новом запуске
+                if (previousStatus != StageExecutionStatus.Paused)
+                {
+                    stageExecution.PauseTimeUtc = null;
+                    stageExecution.ResumeTimeUtc = null;
+                }
+
                 stageExecution.UpdateLastModified();
 
                 await _batchRepo.UpdateStageExecutionAsync(stageExecution);
@@ -555,86 +558,90 @@ namespace Project.Application.Services
         #region Обработка переналадок
 
         /// <summary>
-        /// Проверка и создание этапа переналадки при необходимости
+        /// Проверка и создание этапа переналадки при необходимости (ИСПРАВЛЕННАЯ ВЕРСИЯ)
         /// </summary>
-        private async Task<StageExecution?> CheckAndCreateSetupStageIfNeeded(StageExecution stageExecution, Machine machine)
+        private async Task<StageExecution?> CheckAndCreateSetupStageIfNeeded(StageExecution mainStage, Machine machine)
         {
             try
             {
                 // Для этапов переналадки не создаем вложенные переналадки
-                if (stageExecution.IsSetup) return null;
+                if (mainStage.IsSetup) return null;
 
-                var currentDetailId = stageExecution.SubBatch.Batch.DetailId;
+                var currentDetailId = mainStage.SubBatch.Batch.DetailId;
                 var lastStageOnMachine = await _batchRepo.GetLastCompletedStageOnMachineAsync(machine.Id);
 
                 // Если это первая деталь на станке или та же деталь, переналадка не нужна
                 if (lastStageOnMachine == null || lastStageOnMachine.SubBatch.Batch.DetailId == currentDetailId)
                 {
                     _logger.LogDebug("Переналадка не требуется для этапа {StageId} на станке {MachineId}",
-                        stageExecution.Id, machine.Id);
+                        mainStage.Id, machine.Id);
                     return null;
                 }
 
                 var previousDetailId = lastStageOnMachine.SubBatch.Batch.DetailId;
 
                 // Получаем или создаем запись времени переналадки
-                var setupTime = await _setupTimeRepo.GetSetupTimeAsync(machine.Id, previousDetailId, currentDetailId);
+                var setupTimeRecord = await _setupTimeRepo.GetSetupTimeAsync(machine.Id, previousDetailId, currentDetailId);
 
                 double setupDuration;
-                if (setupTime == null)
+                if (setupTimeRecord == null)
                 {
                     // Используем стандартное время переналадки из маршрута
-                    setupDuration = stageExecution.RouteStage.SetupTime;
+                    setupDuration = mainStage.RouteStage.SetupTime;
 
                     // Создаем запись для будущего использования
-                    setupTime = new SetupTime
+                    var newSetupTimeRecord = new SetupTime
                     {
                         MachineId = machine.Id,
                         FromDetailId = previousDetailId,
                         ToDetailId = currentDetailId,
                         Time = setupDuration
                     };
-                    await _setupTimeRepo.AddAsync(setupTime);
+                    await _setupTimeRepo.AddAsync(newSetupTimeRecord);
 
                     _logger.LogDebug("Создана запись времени переналадки: {FromDetailId} -> {ToDetailId} на станке {MachineId}, время: {Time}ч",
                         previousDetailId, currentDetailId, machine.Id, setupDuration);
                 }
                 else
                 {
-                    setupDuration = setupTime.Time;
+                    setupDuration = setupTimeRecord.Time;
                 }
 
                 // Создаем этап переналадки
                 var setupStage = new StageExecution
                 {
-                    SubBatchId = stageExecution.SubBatchId,
-                    RouteStageId = stageExecution.RouteStageId,
+                    SubBatchId = mainStage.SubBatchId,
+                    RouteStageId = mainStage.RouteStageId,
                     MachineId = machine.Id,
                     Status = StageExecutionStatus.Pending,
                     IsSetup = true,
                     StatusChangedTimeUtc = DateTime.UtcNow,
                     CreatedUtc = DateTime.UtcNow,
-                    Priority = stageExecution.Priority + 1, // Переналадка имеет более высокий приоритет
+                    Priority = mainStage.Priority + 1, // Переналадка имеет более высокий приоритет
                     IsCritical = false,
-                    PlannedStartTimeUtc = DateTime.UtcNow
+                    PlannedStartTimeUtc = DateTime.UtcNow,
+                    MainStageId = mainStage.Id,
+                    OperatorId = mainStage.OperatorId,
+                    DeviceId = mainStage.DeviceId
                 };
 
-                var subBatch = stageExecution.SubBatch;
+                var subBatch = mainStage.SubBatch;
                 subBatch.StageExecutions.Add(setupStage);
                 await _batchRepo.UpdateSubBatchAsync(subBatch);
 
                 _logger.LogInformation("Создан этап переналадки {SetupStageId} для основного этапа {MainStageId}. " +
                     "С детали {FromDetailId} на деталь {ToDetailId}, время: {SetupTime}ч",
-                    setupStage.Id, stageExecution.Id, previousDetailId, currentDetailId, setupDuration);
+                    setupStage.Id, mainStage.Id, previousDetailId, currentDetailId, setupDuration);
 
                 return setupStage;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка при создании этапа переналадки для этапа {StageId}", stageExecution.Id);
+                _logger.LogError(ex, "Ошибка при создании этапа переналадки для этапа {StageId}", mainStage.Id);
                 throw;
             }
         }
+
 
         /// <summary>
         /// Обработка завершения этапа переналадки
@@ -663,15 +670,14 @@ namespace Project.Application.Services
         #endregion
 
         #region Проверки и валидации
-
         /// <summary>
-        /// Проверка завершения всех предыдущих этапов
+        /// Проверка завершения всех предыдущих этапов (ИСПРАВЛЕННАЯ ВЕРСИЯ)
         /// </summary>
         private async Task<bool> CheckAllPreviousStagesCompleted(StageExecution stageExecution)
         {
             try
             {
-                // Если это этап переналадки, предыдущие не проверяем
+                // Для этапов переналадки не требуется проверка последовательности
                 if (stageExecution.IsSetup) return true;
 
                 var subBatch = stageExecution.SubBatch;
@@ -727,6 +733,7 @@ namespace Project.Application.Services
                 return false;
             }
         }
+
 
         /// <summary>
         /// Проверка рабочего времени согласно ТЗ

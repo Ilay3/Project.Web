@@ -118,7 +118,7 @@ namespace Project.Domain.Entities
         }
 
         /// <summary>
-        /// Просрочен ли этап
+        /// Проверяет, просрочен ли этап согласно ТЗ (более 2 часов сверх нормы)
         /// </summary>
         public bool IsOverdue
         {
@@ -127,8 +127,11 @@ namespace Project.Domain.Entities
                 if (!StartTimeUtc.HasValue || Status == StageExecutionStatus.Completed)
                     return false;
 
-                var elapsedTime = DateTime.UtcNow - StartTimeUtc.Value;
-                return elapsedTime > PlannedDuration.Add(TimeSpan.FromHours(2)); // Просрочка больше 2 часов как в ТЗ
+                var actualTime = ActualWorkingTime;
+                if (!actualTime.HasValue) return false;
+
+                var deviation = actualTime.Value - PlannedDuration;
+                return deviation.TotalHours > 2; // Согласно ТЗ: более 2 часов сверх нормы
             }
         }
 
@@ -156,6 +159,12 @@ namespace Project.Domain.Entities
 
             DateTime endTime = EndTimeUtc ?? DateTime.UtcNow;
 
+            // Если этап на паузе, используем время паузы как конечное время
+            if (Status == StageExecutionStatus.Paused && PauseTimeUtc.HasValue)
+            {
+                endTime = PauseTimeUtc.Value;
+            }
+
             // Базовое время работы
             var totalTime = endTime - StartTimeUtc.Value;
 
@@ -167,13 +176,14 @@ namespace Project.Domain.Entities
             }
             else if (PauseTimeUtc.HasValue && Status == StageExecutionStatus.Paused)
             {
-                // Этап сейчас на паузе
-                var pauseDuration = DateTime.UtcNow - PauseTimeUtc.Value;
-                totalTime -= pauseDuration;
+                // Этап сейчас на паузе - время паузы уже учтено в endTime
+                totalTime = PauseTimeUtc.Value - StartTimeUtc.Value;
             }
 
             return totalTime.TotalSeconds > 0 ? totalTime : TimeSpan.Zero;
         }
+
+        
 
         /// <summary>
         /// Обновляет время последнего изменения
