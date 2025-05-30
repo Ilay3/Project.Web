@@ -1,7 +1,4 @@
-﻿// Обновления для Project.Domain/Entities/StageExecution.cs
-// Добавить недостающие свойства к существующему классу:
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -29,80 +26,197 @@ namespace Project.Domain.Entities
         // true если это переналадка, иначе операция
         public bool IsSetup { get; set; }
 
-        // === НОВЫЕ СВОЙСТВА ДЛЯ ПЛАНИРОВАНИЯ ===
-
-        // Позиция в очереди, если этап ожидает
+        // === ПЛАНИРОВАНИЕ ===
         public int? QueuePosition { get; set; }
-
-        // Запланированное время начала (для этапов в очереди)
         public DateTime? ScheduledStartTimeUtc { get; set; }
+        public int Priority { get; set; } = 0;
 
-        // Приоритет этапа (для управления очередью)
-        public int Priority { get; set; } = 0; // 0 - обычный, больше - выше приоритет
-
-        // Идентификатор оператора, выполняющего этап
+        // === ОПЕРАЦИОННЫЕ ДАННЫЕ ===
         public string? OperatorId { get; set; }
-
-        // Причина паузы или отмены
         public string? ReasonNote { get; set; }
-
-        // Флаг обработки планировщиком
-        public bool IsProcessedByScheduler { get; set; } = false;
-
-        // Время последнего изменения статуса
-        public DateTime? StatusChangedTimeUtc { get; set; }
-
-        // Количество попыток запуска этапа
-        public int? StartAttempts { get; set; } = 0;
-
-        // Последняя ошибка, если была
-        public string? LastErrorMessage { get; set; }
-
-        // Идентификатор устройства, с которого управляли этапом
         public string? DeviceId { get; set; }
 
-        // Фактическое время работы (с учетом пауз)
+        // === СИСТЕМНЫЕ ПОЛЯ ===
+        public bool IsProcessedByScheduler { get; set; } = false;
+        public DateTime? StatusChangedTimeUtc { get; set; }
+        public int? StartAttempts { get; set; } = 0;
+        public string? LastErrorMessage { get; set; }
+
+        // === ДОПОЛНИТЕЛЬНЫЕ ПОЛЯ ИЗ ТЗ ===
+        // Время создания этапа
+        public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+        // Плановое время начала (для соблюдения последовательности)
+        public DateTime? PlannedStartTimeUtc { get; set; }
+
+        // Время последнего обновления
+        public DateTime? LastUpdatedUtc { get; set; }
+
+        // ID связанного этапа переналадки (если это основной этап)
+        public int? SetupStageId { get; set; }
+
+        // ID основного этапа (если это переналадка)
+        public int? MainStageId { get; set; }
+
+        // Признак критичности этапа (не прерывать вне рабочего времени)
+        public bool IsCritical { get; set; } = false;
+
+        // Процент выполнения (для этапов в работе)
+        public decimal? CompletionPercentage { get; set; }
+
+        // === ВЫЧИСЛЯЕМЫЕ СВОЙСТВА ===
+
+        /// <summary>
+        /// Фактическое время работы (с учетом пауз)
+        /// </summary>
         public TimeSpan? ActualWorkingTime => CalculateActualWorkingTime();
+
+        /// <summary>
+        /// Плановая продолжительность этапа
+        /// </summary>
+        public TimeSpan PlannedDuration
+        {
+            get
+            {
+                if (RouteStage == null) return TimeSpan.Zero;
+
+                return IsSetup
+                    ? TimeSpan.FromHours(RouteStage.SetupTime)
+                    : TimeSpan.FromHours(RouteStage.NormTime * (SubBatch?.Quantity ?? 1));
+            }
+        }
+
+        /// <summary>
+        /// Отклонение от планового времени
+        /// </summary>
+        public TimeSpan? TimeDeviation
+        {
+            get
+            {
+                var actualTime = ActualWorkingTime;
+                if (!actualTime.HasValue) return null;
+
+                return actualTime.Value - PlannedDuration;
+            }
+        }
+
+        /// <summary>
+        /// Процент выполнения относительно планового времени
+        /// </summary>
+        public decimal? ProgressPercentage
+        {
+            get
+            {
+                var actualTime = ActualWorkingTime;
+                if (!actualTime.HasValue) return null;
+
+                var plannedHours = PlannedDuration.TotalHours;
+                if (plannedHours == 0) return 100;
+
+                return (decimal)Math.Min(100, (actualTime.Value.TotalHours / plannedHours) * 100);
+            }
+        }
+
+        /// <summary>
+        /// Просрочен ли этап
+        /// </summary>
+        public bool IsOverdue
+        {
+            get
+            {
+                if (!StartTimeUtc.HasValue || Status == StageExecutionStatus.Completed)
+                    return false;
+
+                var elapsedTime = DateTime.UtcNow - StartTimeUtc.Value;
+                return elapsedTime > PlannedDuration.Add(TimeSpan.FromHours(2)); // Просрочка больше 2 часов как в ТЗ
+            }
+        }
+
+        /// <summary>
+        /// Можно ли запустить этап сейчас
+        /// </summary>
+        public bool CanStart => Status == StageExecutionStatus.Pending && MachineId.HasValue;
+
+        /// <summary>
+        /// Время до планового начала
+        /// </summary>
+        public TimeSpan? TimeToStart
+        {
+            get
+            {
+                if (!PlannedStartTimeUtc.HasValue) return null;
+                var timeToStart = PlannedStartTimeUtc.Value - DateTime.UtcNow;
+                return timeToStart.TotalSeconds > 0 ? timeToStart : TimeSpan.Zero;
+            }
+        }
 
         private TimeSpan? CalculateActualWorkingTime()
         {
             if (!StartTimeUtc.HasValue) return null;
 
-            // Если этап завершен, используем время окончания
-            if (Status == StageExecutionStatus.Completed && EndTimeUtc.HasValue)
-            {
-                // Если были паузы, учитываем их
-                if (PauseTimeUtc.HasValue && ResumeTimeUtc.HasValue)
-                {
-                    // Общее время минус время паузы
-                    return (EndTimeUtc.Value - StartTimeUtc.Value) - (ResumeTimeUtc.Value - PauseTimeUtc.Value);
-                }
+            DateTime endTime = EndTimeUtc ?? DateTime.UtcNow;
 
-                // Если паузы не было, просто разница между началом и концом
-                return EndTimeUtc.Value - StartTimeUtc.Value;
+            // Базовое время работы
+            var totalTime = endTime - StartTimeUtc.Value;
+
+            // Вычитаем время пауз
+            if (PauseTimeUtc.HasValue && ResumeTimeUtc.HasValue)
+            {
+                var pauseDuration = ResumeTimeUtc.Value - PauseTimeUtc.Value;
+                totalTime -= pauseDuration;
+            }
+            else if (PauseTimeUtc.HasValue && Status == StageExecutionStatus.Paused)
+            {
+                // Этап сейчас на паузе
+                var pauseDuration = DateTime.UtcNow - PauseTimeUtc.Value;
+                totalTime -= pauseDuration;
             }
 
-            // Если этап в процессе, считаем текущее время
-            if (Status == StageExecutionStatus.InProgress)
+            return totalTime.TotalSeconds > 0 ? totalTime : TimeSpan.Zero;
+        }
+
+        /// <summary>
+        /// Обновляет время последнего изменения
+        /// </summary>
+        public void UpdateLastModified()
+        {
+            LastUpdatedUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Проверяет возможность перехода в новый статус
+        /// </summary>
+        public bool CanTransitionTo(StageExecutionStatus newStatus)
+        {
+            var allowedTransitions = new Dictionary<StageExecutionStatus, List<StageExecutionStatus>>
             {
-                // Если были паузы, учитываем их
-                if (PauseTimeUtc.HasValue && ResumeTimeUtc.HasValue)
-                {
-                    // Общее время минус время паузы
-                    return (DateTime.UtcNow - StartTimeUtc.Value) - (ResumeTimeUtc.Value - PauseTimeUtc.Value);
-                }
+                [StageExecutionStatus.Pending] = new() {
+                    StageExecutionStatus.InProgress,
+                    StageExecutionStatus.Waiting,
+                    StageExecutionStatus.Error
+                },
+                [StageExecutionStatus.Waiting] = new() {
+                    StageExecutionStatus.Pending,
+                    StageExecutionStatus.Error
+                },
+                [StageExecutionStatus.InProgress] = new() {
+                    StageExecutionStatus.Paused,
+                    StageExecutionStatus.Completed,
+                    StageExecutionStatus.Error
+                },
+                [StageExecutionStatus.Paused] = new() {
+                    StageExecutionStatus.InProgress,
+                    StageExecutionStatus.Completed,
+                    StageExecutionStatus.Error
+                },
+                [StageExecutionStatus.Completed] = new() { }, // Завершенный этап нельзя изменить
+                [StageExecutionStatus.Error] = new() {
+                    StageExecutionStatus.Pending
+                } // Можно перезапустить
+            };
 
-                // Если паузы не было, просто разница между началом и текущим временем
-                return DateTime.UtcNow - StartTimeUtc.Value;
-            }
-
-            // Если этап на паузе, считаем до момента паузы
-            if (Status == StageExecutionStatus.Paused && PauseTimeUtc.HasValue)
-            {
-                return PauseTimeUtc.Value - StartTimeUtc.Value;
-            }
-
-            return null;
+            return allowedTransitions.ContainsKey(Status) &&
+                   allowedTransitions[Status].Contains(newStatus);
         }
     }
 
@@ -113,6 +227,6 @@ namespace Project.Domain.Entities
         Paused,     // На паузе
         Completed,  // Завершено
         Waiting,    // В очереди
-        Error       // Ошибка
+        Error       // Ошибка/отменено
     }
 }

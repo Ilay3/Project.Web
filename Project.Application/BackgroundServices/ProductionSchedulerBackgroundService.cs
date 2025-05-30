@@ -10,7 +10,7 @@ using System.Linq;
 namespace Project.Application.BackgroundServices
 {
     /// <summary>
-    /// Улучшенная фоновая служба с автоматическим управлением этапами
+    /// Фоновая служба планирования производства согласно ТЗ
     /// </summary>
     public class ProductionSchedulerBackgroundService : BackgroundService
     {
@@ -20,13 +20,16 @@ namespace Project.Application.BackgroundServices
         // Интервал проверки (30 секунд)
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
 
-        // Рабочие часы предприятия (местное время)
+        // Рабочие часы предприятия (согласно ТЗ)
         private readonly TimeSpan _workStart = new TimeSpan(8, 0, 0);   // 08:00
+        private readonly TimeSpan _workEnd = new TimeSpan(1, 30, 0);     // 01:30 следующего дня
         private readonly TimeSpan _lunchStart = new TimeSpan(12, 0, 0); // 12:00
         private readonly TimeSpan _lunchEnd = new TimeSpan(13, 0, 0);   // 13:00
         private readonly TimeSpan _dinnerStart = new TimeSpan(21, 0, 0); // 21:00
         private readonly TimeSpan _dinnerEnd = new TimeSpan(21, 30, 0);  // 21:30
-        private readonly TimeSpan _workEnd = new TimeSpan(1, 30, 0);     // 01:30 следующего дня
+
+        // Тайм-зона предприятия (можно настроить через конфигурацию)
+        private readonly TimeZoneInfo _enterpriseTimeZone = TimeZoneInfo.Local;
 
         public ProductionSchedulerBackgroundService(
             ILogger<ProductionSchedulerBackgroundService> logger,
@@ -40,25 +43,35 @@ namespace Project.Application.BackgroundServices
         {
             _logger.LogInformation("Служба автоматического планирования производства запущена");
 
+            // Ждем немного, чтобы приложение полностью инициализировалось
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    await ProcessSchedulingAsync();
+                    await ProcessSchedulingCycleAsync();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Ошибка при выполнении автоматического планирования производства");
+                    _logger.LogError(ex, "Критическая ошибка в цикле планирования производства");
                 }
 
                 // Ожидание перед следующей проверкой
-                await Task.Delay(_checkInterval, stoppingToken);
+                try
+                {
+                    await Task.Delay(_checkInterval, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
 
             _logger.LogInformation("Служба автоматического планирования производства остановлена");
         }
 
-        private async Task ProcessSchedulingAsync()
+        private async Task ProcessSchedulingCycleAsync()
         {
             using var scope = _serviceProvider.CreateScope();
 
@@ -66,64 +79,41 @@ namespace Project.Application.BackgroundServices
             var stageService = scope.ServiceProvider.GetRequiredService<StageExecutionService>();
             var batchRepo = scope.ServiceProvider.GetRequiredService<Domain.Repositories.IBatchRepository>();
 
-            var isWorkingTime = IsWorkingTime(DateTime.Now);
+            var currentTime = GetCurrentEnterpriseTime();
+            var isWorkingTime = IsWorkingTime(currentTime);
 
-            _logger.LogDebug("Проверка планирования. Рабочее время: {IsWorking}", isWorkingTime);
+            _logger.LogDebug("Цикл планирования: {Time}, рабочее время: {IsWorking}",
+                currentTime.ToString("yyyy-MM-dd HH:mm:ss"), isWorkingTime);
 
             try
             {
-                // 1. АВТОМАТИЧЕСКОЕ ЗАВЕРШЕНИЕ ПРОСРОЧЕННЫХ ЭТАПОВ
-                await AutoCompleteOverdueStages(stageService, batchRepo);
+                // 1. АВТОМАТИЧЕСКОЕ ЗАВЕРШЕНИЕ ПРОСРОЧЕННЫХ ЭТАПОВ (согласно ТЗ: более 2 часов сверх нормы)
+                await AutoCompleteOverdueStagesAsync(stageService, batchRepo);
 
                 // 2. УПРАВЛЕНИЕ ЭТАПАМИ ВНЕ РАБОЧЕГО ВРЕМЕНИ
                 if (!isWorkingTime)
                 {
-                    await PauseStagesOutsideWorkingHours(stageService, batchRepo);
+                    await HandleStagesOutsideWorkingHoursAsync(stageService, batchRepo);
                 }
                 else
                 {
                     // 3. ВОЗОБНОВЛЕНИЕ ЭТАПОВ В РАБОЧЕЕ ВРЕМЯ
-                    await ResumeStagesDuringWorkingHours(stageService, batchRepo);
-                }
+                    await ResumeStagesDuringWorkingHoursAsync(stageService, batchRepo);
 
-                // 4. ПЛАНИРОВАНИЕ ЭТАПОВ В ОЧЕРЕДИ (только в рабочее время)
-                if (isWorkingTime)
-                {
-                    var stagesInQueue = await batchRepo.GetAllStagesInQueueAsync();
-                    foreach (var stage in stagesInQueue)
-                    {
-                        _logger.LogDebug("Планирование этапа в очереди: {StageId}", stage.Id);
-                        await schedulerService.ScheduleStageExecutionAsync(stage.Id);
-                    }
+                    // 4. ПЛАНИРОВАНИЕ ЭТАПОВ В ОЧЕРЕДИ (только в рабочее время)
+                    await ProcessQueuedStagesAsync(schedulerService, batchRepo);
 
                     // 5. АВТОЗАПУСК ГОТОВЫХ ЭТАПОВ
-                    var pendingStages = await batchRepo.GetPendingStagesAsync();
-                    foreach (var stage in pendingStages.Take(5)) // Ограничиваем количество для предотвращения перегрузки
-                    {
-                        bool canStart = await schedulerService.CanStartStageAsync(stage.Id);
-
-                        if (canStart)
-                        {
-                            _logger.LogInformation("Автоматический запуск готового этапа: {StageId}", stage.Id);
-
-                            if (stage.MachineId.HasValue)
-                            {
-                                await schedulerService.StartPendingStageAsync(stage.Id);
-                            }
-                            else
-                            {
-                                await schedulerService.ScheduleStageExecutionAsync(stage.Id);
-                            }
-                        }
-                    }
+                    await AutoStartPendingStagesAsync(schedulerService, batchRepo);
                 }
 
-                // 6. ОБРАБОТКА ЗАВЕРШЕННЫХ ЭТАПОВ
-                var completedStages = await batchRepo.GetRecentlyCompletedStagesAsync();
-                foreach (var stage in completedStages)
+                // 6. ОБРАБОТКА ЗАВЕРШЕННЫХ ЭТАПОВ (в любое время)
+                await ProcessCompletedStagesAsync(schedulerService, batchRepo);
+
+                // 7. ОПТИМИЗАЦИЯ ПЛАНИРОВАНИЯ (в рабочее время, раз в 5 минут)
+                if (isWorkingTime && DateTime.UtcNow.Minute % 5 == 0)
                 {
-                    _logger.LogDebug("Обработка завершенного этапа: {StageId}", stage.Id);
-                    await schedulerService.HandleStageCompletionAsync(stage.Id);
+                    await OptimizeSchedulingAsync(schedulerService);
                 }
             }
             catch (Exception ex)
@@ -133,9 +123,9 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
-        /// Автоматическое завершение просроченных этапов
+        /// Автоматическое завершение просроченных этапов (согласно ТЗ: более 2 часов сверх нормы)
         /// </summary>
-        private async Task AutoCompleteOverdueStages(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
+        private async Task AutoCompleteOverdueStagesAsync(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
         {
             try
             {
@@ -143,23 +133,15 @@ namespace Project.Application.BackgroundServices
 
                 var overdueStages = inProgressStages.Where(s =>
                     s.Status == Domain.Entities.StageExecutionStatus.InProgress &&
-                    s.StartTimeUtc.HasValue &&
-                    IsStageOverdue(s)).ToList();
+                    s.IsOverdue).ToList();
 
                 foreach (var stage in overdueStages)
                 {
                     try
                     {
-                        // Рассчитываем плановое время завершения
-                        var plannedDuration = stage.IsSetup
-                            ? TimeSpan.FromHours(stage.RouteStage.SetupTime)
-                            : TimeSpan.FromHours(stage.RouteStage.NormTime * stage.SubBatch.Quantity);
+                        var overdueTime = stage.TimeDeviation ?? TimeSpan.Zero;
 
-                        var plannedEndTime = stage.StartTimeUtc.Value.Add(plannedDuration);
-                        var now = DateTime.UtcNow;
-                        var overdueTime = now - plannedEndTime;
-
-                        _logger.LogWarning("Автоматическое завершение просроченного этапа {StageId}. " +
+                        _logger.LogWarning("Автозавершение просроченного этапа {StageId}. " +
                             "Просрочка: {OverdueHours:F1} часов", stage.Id, overdueTime.TotalHours);
 
                         await stageService.CompleteStageExecution(
@@ -173,6 +155,11 @@ namespace Project.Application.BackgroundServices
                         _logger.LogError(ex, "Ошибка при автозавершении этапа {StageId}", stage.Id);
                     }
                 }
+
+                if (overdueStages.Any())
+                {
+                    _logger.LogInformation("Автоматически завершено {Count} просроченных этапов", overdueStages.Count);
+                }
             }
             catch (Exception ex)
             {
@@ -181,27 +168,9 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
-        /// Проверка, является ли этап просроченным
+        /// Обработка этапов вне рабочего времени (согласно ТЗ)
         /// </summary>
-        private bool IsStageOverdue(Domain.Entities.StageExecution stage)
-        {
-            if (!stage.StartTimeUtc.HasValue) return false;
-
-            var plannedDuration = stage.IsSetup
-                ? TimeSpan.FromHours(stage.RouteStage.SetupTime)
-                : TimeSpan.FromHours(stage.RouteStage.NormTime * stage.SubBatch.Quantity);
-
-            var plannedEndTime = stage.StartTimeUtc.Value.Add(plannedDuration);
-            var now = DateTime.UtcNow;
-
-            // Считаем просроченным, если прошло более 2 часов сверх плана
-            return now > plannedEndTime.AddHours(2);
-        }
-
-        /// <summary>
-        /// Приостановка этапов вне рабочего времени
-        /// </summary>
-        private async Task PauseStagesOutsideWorkingHours(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
+        private async Task HandleStagesOutsideWorkingHoursAsync(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
         {
             try
             {
@@ -228,6 +197,11 @@ namespace Project.Application.BackgroundServices
                         _logger.LogError(ex, "Ошибка при автоприостановке этапа {StageId}", stage.Id);
                     }
                 }
+
+                if (stagesToPause.Any())
+                {
+                    _logger.LogInformation("Приостановлено {Count} этапов вне рабочего времени", stagesToPause.Count);
+                }
             }
             catch (Exception ex)
             {
@@ -236,33 +210,9 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
-        /// Проверка, должен ли этап продолжаться вне рабочего времени
-        /// </summary>
-        private bool ShouldContinueOutsideWorkingHours(Domain.Entities.StageExecution stage)
-        {
-            // Этапы переналадки могут продолжаться вне рабочего времени
-            if (stage.IsSetup) return true;
-
-            // Критически важные этапы (с высоким приоритетом)
-            if (stage.Priority > 5) return true;
-
-            // Этапы, которые скоро завершатся (менее 30 минут)
-            if (stage.StartTimeUtc.HasValue)
-            {
-                var plannedDuration = TimeSpan.FromHours(stage.RouteStage.NormTime * stage.SubBatch.Quantity);
-                var elapsed = DateTime.UtcNow - stage.StartTimeUtc.Value;
-                var remaining = plannedDuration - elapsed;
-
-                if (remaining <= TimeSpan.FromMinutes(30)) return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// Возобновление этапов в рабочее время
         /// </summary>
-        private async Task ResumeStagesDuringWorkingHours(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
+        private async Task ResumeStagesDuringWorkingHoursAsync(StageExecutionService stageService, Domain.Repositories.IBatchRepository batchRepo)
         {
             try
             {
@@ -289,11 +239,173 @@ namespace Project.Application.BackgroundServices
                         _logger.LogError(ex, "Ошибка при автовозобновлении этапа {StageId}", stage.Id);
                     }
                 }
+
+                if (stagesToResume.Any())
+                {
+                    _logger.LogInformation("Возобновлено {Count} этапов в рабочее время", stagesToResume.Count);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при возобновлении этапов в рабочее время");
             }
+        }
+
+        /// <summary>
+        /// Обработка этапов в очереди
+        /// </summary>
+        private async Task ProcessQueuedStagesAsync(ProductionSchedulerService schedulerService, Domain.Repositories.IBatchRepository batchRepo)
+        {
+            try
+            {
+                var stagesInQueue = await batchRepo.GetAllStagesInQueueAsync();
+                var processedCount = 0;
+
+                foreach (var stage in stagesInQueue.Take(10)) // Ограничиваем для производительности
+                {
+                    try
+                    {
+                        _logger.LogDebug("Планирование этапа в очереди: {StageId}", stage.Id);
+                        await schedulerService.ScheduleStageExecutionAsync(stage.Id);
+                        processedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при планировании этапа {StageId}", stage.Id);
+                    }
+                }
+
+                if (processedCount > 0)
+                {
+                    _logger.LogDebug("Обработано {Count} этапов из очереди", processedCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при обработке очереди этапов");
+            }
+        }
+
+        /// <summary>
+        /// Автозапуск готовых этапов
+        /// </summary>
+        private async Task AutoStartPendingStagesAsync(ProductionSchedulerService schedulerService, Domain.Repositories.IBatchRepository batchRepo)
+        {
+            try
+            {
+                var pendingStages = await batchRepo.GetPendingStagesAsync();
+                var startedCount = 0;
+
+                foreach (var stage in pendingStages.Take(5)) // Ограничиваем количество одновременных запусков
+                {
+                    try
+                    {
+                        bool canStart = await schedulerService.CanStartStageAsync(stage.Id);
+
+                        if (canStart)
+                        {
+                            _logger.LogDebug("Автоматический запуск готового этапа: {StageId}", stage.Id);
+
+                            if (stage.MachineId.HasValue)
+                            {
+                                var started = await schedulerService.StartPendingStageAsync(stage.Id);
+                                if (started) startedCount++;
+                            }
+                            else
+                            {
+                                await schedulerService.ScheduleStageExecutionAsync(stage.Id);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при автозапуске этапа {StageId}", stage.Id);
+                    }
+                }
+
+                if (startedCount > 0)
+                {
+                    _logger.LogInformation("Автоматически запущено {Count} этапов", startedCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при автозапуске этапов");
+            }
+        }
+
+        /// <summary>
+        /// Обработка завершенных этапов
+        /// </summary>
+        private async Task ProcessCompletedStagesAsync(ProductionSchedulerService schedulerService, Domain.Repositories.IBatchRepository batchRepo)
+        {
+            try
+            {
+                var completedStages = await batchRepo.GetRecentlyCompletedStagesAsync();
+                var processedCount = 0;
+
+                foreach (var stage in completedStages)
+                {
+                    try
+                    {
+                        _logger.LogDebug("Обработка завершенного этапа: {StageId}", stage.Id);
+                        await schedulerService.HandleStageCompletionAsync(stage.Id);
+                        processedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ошибка при обработке завершенного этапа {StageId}", stage.Id);
+                    }
+                }
+
+                if (processedCount > 0)
+                {
+                    _logger.LogDebug("Обработано {Count} завершенных этапов", processedCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при обработке завершенных этапов");
+            }
+        }
+
+        /// <summary>
+        /// Оптимизация планирования
+        /// </summary>
+        private async Task OptimizeSchedulingAsync(ProductionSchedulerService schedulerService)
+        {
+            try
+            {
+                await schedulerService.OptimizeQueueAsync();
+                _logger.LogDebug("Выполнена оптимизация планирования");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при оптимизации планирования");
+            }
+        }
+
+        /// <summary>
+        /// Проверка, должен ли этап продолжаться вне рабочего времени (согласно ТЗ)
+        /// </summary>
+        private bool ShouldContinueOutsideWorkingHours(Domain.Entities.StageExecution stage)
+        {
+            // Этапы переналадки могут продолжаться вне рабочего времени (согласно ТЗ)
+            if (stage.IsSetup) return true;
+
+            // Критически важные этапы (высокий приоритет > 7)
+            if (stage.Priority > 7 || stage.IsCritical) return true;
+
+            // Этапы, которые скоро завершатся (менее 30 минут) (согласно ТЗ)
+            if (stage.StartTimeUtc.HasValue)
+            {
+                var elapsed = DateTime.UtcNow - stage.StartTimeUtc.Value;
+                var remaining = stage.PlannedDuration - elapsed;
+
+                if (remaining <= TimeSpan.FromMinutes(30)) return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -307,7 +419,8 @@ namespace Project.Application.BackgroundServices
             {
                 "рабочего времени",
                 "AUTO_SYSTEM",
-                "автоматическая приостановка"
+                "автоматическая приостановка",
+                "вне рабочего времени"
             };
 
             return systemPauseReasons.Any(reason =>
@@ -315,39 +428,45 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
-        /// Проверка рабочего времени (улучшенная)
+        /// Получение текущего времени предприятия
+        /// </summary>
+        private DateTime GetCurrentEnterpriseTime()
+        {
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _enterpriseTimeZone);
+        }
+
+        /// <summary>
+        /// Проверка рабочего времени (согласно ТЗ)
         /// </summary>
         private bool IsWorkingTime(DateTime dateTime)
         {
             try
             {
-                // Используем местное время
-                var localTime = dateTime;
-                var timeOfDay = localTime.TimeOfDay;
-                var dayOfWeek = localTime.DayOfWeek;
+                var timeOfDay = dateTime.TimeOfDay;
+                var dayOfWeek = dateTime.DayOfWeek;
 
-                // Не работаем в выходные
+                // Не работаем в выходные (согласно ТЗ: суббота, воскресенье)
                 if (dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday)
                 {
                     _logger.LogDebug("Выходной день: {DayOfWeek}", dayOfWeek);
                     return false;
                 }
 
-                // Обеденный перерыв 12:00-13:00
+                // Обеденный перерыв 12:00-13:00 (согласно ТЗ)
                 if (timeOfDay >= _lunchStart && timeOfDay < _lunchEnd)
                 {
                     _logger.LogDebug("Обеденный перерыв: {Time}", timeOfDay);
                     return false;
                 }
 
-                // Перерыв на ужин 21:00-21:30
+                // Перерыв на ужин 21:00-21:30 (согласно ТЗ)
                 if (timeOfDay >= _dinnerStart && timeOfDay < _dinnerEnd)
                 {
                     _logger.LogDebug("Перерыв на ужин: {Time}", timeOfDay);
                     return false;
                 }
 
-                // Рабочее время: 08:00-01:30 (следующего дня)
+                // Рабочее время: 08:00-01:30 следующего дня (согласно ТЗ)
                 // Обрабатываем переход через полночь
                 if (_workEnd < _workStart) // переход через полночь
                 {
