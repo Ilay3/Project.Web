@@ -1,18 +1,34 @@
 ﻿@model DetailFormViewModel
 @{
-    ViewData["Title"] = "Создание детали";
+    ViewData["Title"] = "Редактирование детали";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Создание детали</h1>
-    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+    <h1 class="h3">Редактирование детали</h1>
+    <div>
+        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-primary">
+            <i class="bi bi-eye"></i> Просмотр
+        </a>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад
+        </a>
+    </div>
 </div>
 
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pencil"></i>
+                    Редактирование детали
+                </h5>
+            </div>
             <div class="card-body">
-                <form asp-action="Create" method="post">
+                <form asp-action="Edit" method="post">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="Id" type="hidden">
+
                     <div class="mb-3">
                         <label asp-for="Number" class="form-label">Номер детали *</label>
                         <input asp-for="Number" class="form-control" required>
@@ -28,6 +44,7 @@
                     <div class="mb-3">
                         <label asp-for="Description" class="form-label">Описание</label>
                         <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
                     </div>
 
                     <div class="row">
@@ -35,12 +52,14 @@
                             <div class="mb-3">
                                 <label asp-for="Material" class="form-label">Материал</label>
                                 <input asp-for="Material" class="form-control">
+                                <span asp-validation-for="Material" class="text-danger"></span>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label asp-for="Unit" class="form-label">Единица измерения</label>
-                                <input asp-for="Unit" class="form-control" value="шт">
+                                <input asp-for="Unit" class="form-control">
+                                <span asp-validation-for="Unit" class="text-danger"></span>
                             </div>
                         </div>
                     </div>
@@ -50,19 +69,25 @@
                             <div class="mb-3">
                                 <label asp-for="Weight" class="form-label">Вес (кг)</label>
                                 <input asp-for="Weight" class="form-control" type="number" step="0.001">
+                                <span asp-validation-for="Weight" class="text-danger"></span>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label asp-for="Category" class="form-label">Категория</label>
                                 <input asp-for="Category" class="form-control">
+                                <span asp-validation-for="Category" class="text-danger"></span>
                             </div>
                         </div>
                     </div>
 
                     <div class="d-flex justify-content-between">
-                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Отмена</a>
-                        <button type="submit" class="btn btn-primary">Создать деталь</button>
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                            <i class="bi bi-x"></i> Отмена
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Сохранить изменения
+                        </button>
                     </div>
                 </form>
             </div>

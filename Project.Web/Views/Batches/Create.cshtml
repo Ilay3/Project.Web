@@ -1,0 +1,85 @@
+﻿@model BatchCreateViewModel
+@{
+    ViewData["Title"] = "Создание партии";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Создание партии</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="Create" method="post">
+                    <div class="mb-3">
+                        <label asp-for="DetailId" class="form-label">Деталь *</label>
+                        <select asp-for="DetailId" class="form-select" required>
+                            <option value="">Выберите деталь...</option>
+                            @foreach (var detail in Model.AvailableDetails)
+                            {
+                                <option value="@detail.Id">@detail.Number - @detail.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="DetailId" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Quantity" class="form-label">Количество *</label>
+                        <input asp-for="Quantity" class="form-control" type="number" min="1" required>
+                        <span asp-validation-for="Quantity" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Priority" class="form-label">Приоритет</label>
+                        <select asp-for="Priority" class="form-select">
+                            <option value="Low">Низкий</option>
+                            <option value="Normal" selected>Обычный</option>
+                            <option value="High">Высокий</option>
+                            <option value="Critical">Критический</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input asp-for="AutoStartPlanning" class="form-check-input" type="checkbox" checked>
+                            <label asp-for="AutoStartPlanning" class="form-check-label">
+                                Автоматически запустить планирование
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input asp-for="SplitIntoBatches" class="form-check-input" type="checkbox" id="splitCheck">
+                            <label asp-for="SplitIntoBatches" class="form-check-label">
+                                Разделить на подпартии
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="subBatchDiv" style="display: none;">
+                        <label asp-for="SubBatchSize" class="form-label">Размер подпартии</label>
+                        <input asp-for="SubBatchSize" class="form-control" type="number" min="1">
+                        <div class="form-text">Количество деталей в одной подпартии</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">Отмена</a>
+                        <button type="submit" class="btn btn-primary">Создать партию</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('splitCheck').addEventListener('change', function() {
+            const subBatchDiv = document.getElementById('subBatchDiv');
+            subBatchDiv.style.display = this.checked ? 'block' : 'none';
+        });
+    </script>
+}
