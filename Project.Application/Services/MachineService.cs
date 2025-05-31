@@ -30,7 +30,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение всех станков с расширенной информацией
+        /// Получение всех станков с расширенной информацией согласно ТЗ
         /// </summary>
         public async Task<List<MachineDto>> GetAllAsync()
         {
@@ -99,22 +99,29 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение доступных станков для типа
+        /// Получение доступных станков для типа согласно ТЗ
         /// </summary>
         public async Task<List<MachineDto>> GetAvailableMachinesAsync(int machineTypeId)
         {
             try
             {
-                var machines = await _machineRepo.GetAvailableMachinesAsync(machineTypeId);
+                var machines = await _machineRepo.GetMachinesByTypeAsync(machineTypeId);
                 var result = new List<MachineDto>();
+
+                // Получаем информацию о занятых станках
+                var occupiedMachineIds = await GetOccupiedMachineIdsAsync();
 
                 foreach (var machine in machines)
                 {
-                    var machineDto = await MapToMachineDto(machine);
-                    result.Add(machineDto);
+                    // Станок доступен, если на нем ничего не выполняется
+                    if (!occupiedMachineIds.Contains(machine.Id))
+                    {
+                        var machineDto = await MapToMachineDto(machine);
+                        result.Add(machineDto);
+                    }
                 }
 
-                return result;
+                return result.OrderByDescending(m => m.Priority).ToList();
             }
             catch (Exception ex)
             {
@@ -141,6 +148,11 @@ namespace Project.Application.Services
                 var machineType = await _machineTypeRepo.GetByIdAsync(dto.MachineTypeId);
                 if (machineType == null)
                     throw new ArgumentException($"Тип станка с ID {dto.MachineTypeId} не найден");
+
+                // Проверяем уникальность инвентарного номера
+                var allMachines = await _machineRepo.GetAllAsync();
+                if (allMachines.Any(m => m.InventoryNumber.Equals(dto.InventoryNumber.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    throw new ArgumentException($"Станок с инвентарным номером '{dto.InventoryNumber}' уже существует");
 
                 var entity = new Machine
                 {
@@ -186,6 +198,12 @@ namespace Project.Application.Services
                 var machineType = await _machineTypeRepo.GetByIdAsync(dto.MachineTypeId);
                 if (machineType == null)
                     throw new ArgumentException($"Тип станка с ID {dto.MachineTypeId} не найден");
+
+                // Проверяем уникальность инвентарного номера (исключая текущий станок)
+                var allMachines = await _machineRepo.GetAllAsync();
+                if (allMachines.Any(m => m.Id != dto.Id &&
+                    m.InventoryNumber.Equals(dto.InventoryNumber.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    throw new ArgumentException($"Станок с инвентарным номером '{dto.InventoryNumber}' уже существует");
 
                 entity.Name = dto.Name.Trim();
                 entity.InventoryNumber = dto.InventoryNumber.Trim();
@@ -237,7 +255,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение статистики загрузки станка
+        /// Получение статистики загрузки станка согласно ТЗ
         /// </summary>
         public async Task<MachineUtilizationDto> GetMachineUtilizationAsync(int machineId, DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -247,21 +265,26 @@ namespace Project.Application.Services
                 if (machine == null)
                     throw new ArgumentException($"Станок с ID {machineId} не найден");
 
-                startDate ??= DateTime.Today.AddDays(-30);
+                startDate ??= DateTime.Today.AddDays(-7);
                 endDate ??= DateTime.Today.AddDays(1);
 
                 var stageHistory = await _batchRepo.GetStageExecutionHistoryAsync(startDate, endDate, machineId);
 
                 var completedStages = stageHistory.Where(s => s.Status == StageExecutionStatus.Completed).ToList();
+
+                // Рабочее время (основные операции)
                 var workingHours = completedStages
                     .Where(s => !s.IsSetup && s.ActualWorkingTime.HasValue)
                     .Sum(s => s.ActualWorkingTime!.Value.TotalHours);
 
+                // Время переналадок
                 var setupHours = completedStages
                     .Where(s => s.IsSetup && s.ActualWorkingTime.HasValue)
                     .Sum(s => s.ActualWorkingTime!.Value.TotalHours);
 
-                var totalAvailableHours = (endDate.Value - startDate.Value).TotalHours;
+                // Рассчитываем общее доступное время (с учетом рабочего времени согласно ТЗ)
+                var totalAvailableHours = CalculateAvailableWorkingHours(startDate.Value, endDate.Value);
+
                 var utilizationPercentage = totalAvailableHours > 0 ?
                     (decimal)((workingHours + setupHours) / totalAvailableHours * 100) : 0;
 
@@ -287,7 +310,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение календарного отчета по станку
+        /// Получение календарного отчета по станку согласно ТЗ
         /// </summary>
         public async Task<MachineCalendarReportDto> GetMachineCalendarReportAsync(int machineId, DateTime startDate, DateTime endDate)
         {
@@ -305,29 +328,38 @@ namespace Project.Application.Services
                     MachineName = machine.Name,
                     MachineTypeName = machine.MachineType?.Name ?? "",
                     StartDate = startDate,
-                    EndDate = endDate
+                    EndDate = endDate,
+                    DailyWorkingHours = new Dictionary<DateTime, double>(),
+                    DailySetupHours = new Dictionary<DateTime, double>(),
+                    DailyIdleHours = new Dictionary<DateTime, double>(),
+                    DailyManufacturedParts = new Dictionary<DateTime, List<ManufacturedPartDto>>(),
+                    DailyUtilization = new Dictionary<DateTime, decimal>()
                 };
 
-                // Группируем по дням
+                // Группируем этапы по дням
                 var stagesByDay = stageHistory
                     .Where(s => s.StartTimeUtc.HasValue)
                     .GroupBy(s => s.StartTimeUtc!.Value.Date)
                     .ToDictionary(g => g.Key, g => g.ToList());
 
-                foreach (var day in stagesByDay)
+                // Заполняем все дни в периоде
+                for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
                 {
-                    var dayDate = day.Key;
-                    var dayStages = day.Value;
+                    var dayStages = stagesByDay.ContainsKey(date) ? stagesByDay[date] : new List<StageExecution>();
 
-                    // Рабочее время
+                    // Рабочее время (основные операции)
                     var workingHours = dayStages
-                        .Where(s => !s.IsSetup && s.ActualWorkingTime.HasValue)
+                        .Where(s => !s.IsSetup && s.Status == StageExecutionStatus.Completed && s.ActualWorkingTime.HasValue)
                         .Sum(s => s.ActualWorkingTime!.Value.TotalHours);
 
                     // Время переналадок
                     var setupHours = dayStages
-                        .Where(s => s.IsSetup && s.ActualWorkingTime.HasValue)
+                        .Where(s => s.IsSetup && s.Status == StageExecutionStatus.Completed && s.ActualWorkingTime.HasValue)
                         .Sum(s => s.ActualWorkingTime!.Value.TotalHours);
+
+                    // Доступное время в день с учетом рабочего времени согласно ТЗ
+                    var dailyAvailableHours = CalculateAvailableWorkingHours(date, date.AddDays(1));
+                    var idleHours = Math.Max(0, dailyAvailableHours - workingHours - setupHours);
 
                     // Изготовленные детали
                     var manufacturedParts = dayStages
@@ -342,16 +374,35 @@ namespace Project.Application.Services
                             BatchId = s.SubBatch.BatchId
                         }).ToList();
 
-                    report.DailyWorkingHours[dayDate] = Math.Round(workingHours, 2);
-                    report.DailySetupHours[dayDate] = Math.Round(setupHours, 2);
-                    report.DailyIdleHours[dayDate] = Math.Max(0, 24 - workingHours - setupHours); // Упрощенный расчет
-                    report.DailyManufacturedParts[dayDate] = manufacturedParts;
-                    report.DailyUtilization[dayDate] = workingHours + setupHours > 0 ?
-                        (decimal)Math.Round((workingHours / (workingHours + setupHours)) * 100, 1) : 0;
+                    // Коэффициент использования согласно ТЗ
+                    var totalActiveHours = workingHours + setupHours;
+                    var utilization = dailyAvailableHours > 0 ?
+                        (decimal)Math.Round((totalActiveHours / dailyAvailableHours) * 100, 1) : 0;
+
+                    report.DailyWorkingHours[date] = Math.Round(workingHours, 2);
+                    report.DailySetupHours[date] = Math.Round(setupHours, 2);
+                    report.DailyIdleHours[date] = Math.Round(idleHours, 2);
+                    report.DailyManufacturedParts[date] = manufacturedParts;
+                    report.DailyUtilization[date] = utilization;
                 }
 
                 // Общая статистика
-                report.TotalStatistics = await GetMachineStatisticsAsync(machineId, startDate, endDate);
+                report.TotalStatistics = new MachineStatisticsDto
+                {
+                    MachineId = machineId,
+                    MachineName = machine.Name,
+                    MachineTypeName = machine.MachineType?.Name ?? "",
+                    WorkingHours = report.DailyWorkingHours.Values.Sum(),
+                    SetupHours = report.DailySetupHours.Values.Sum(),
+                    IdleHours = report.DailyIdleHours.Values.Sum(),
+                    UtilizationPercentage = report.DailyWorkingHours.Values.Sum() + report.DailySetupHours.Values.Sum() > 0 ?
+                        (decimal)Math.Round(((report.DailyWorkingHours.Values.Sum() + report.DailySetupHours.Values.Sum()) /
+                                          (report.DailyWorkingHours.Values.Sum() + report.DailySetupHours.Values.Sum() + report.DailyIdleHours.Values.Sum())) * 100, 2) : 0,
+                    PartsMade = stageHistory.Count(s => !s.IsSetup && s.Status == StageExecutionStatus.Completed),
+                    SetupCount = stageHistory.Count(s => s.IsSetup && s.Status == StageExecutionStatus.Completed),
+                    AverageSetupTime = stageHistory.Where(s => s.IsSetup && s.ActualWorkingTime.HasValue).Any() ?
+                        stageHistory.Where(s => s.IsSetup && s.ActualWorkingTime.HasValue).Average(s => s.ActualWorkingTime!.Value.TotalHours) : 0
+                };
 
                 return report;
             }
@@ -362,6 +413,8 @@ namespace Project.Application.Services
             }
         }
 
+        #region Приватные методы
+
         /// <summary>
         /// Маппинг Entity в DTO
         /// </summary>
@@ -369,16 +422,23 @@ namespace Project.Application.Services
         {
             try
             {
-                // Определяем текущий статус станка
+                // Определяем текущий статус станка согласно ТЗ
+                var status = await DetermineMachineStatus(machine.Id);
+
+                // Получаем текущий этап
                 var currentStage = await _batchRepo.GetCurrentStageOnMachineAsync(machine.Id);
-                var status = currentStage != null ? MachineStatus.Busy : MachineStatus.Available;
 
                 // Получаем очередь этапов
                 var queuedStages = await _batchRepo.GetQueuedStagesForMachineAsync(machine.Id);
 
-                // Рассчитываем загруженность за последние 7 дней
-                var utilizationData = await GetMachineUtilizationAsync(machine.Id,
-                    DateTime.Today.AddDays(-7), DateTime.Today.AddDays(1));
+                // Получаем последнюю деталь для переналадки
+                var lastStage = await _batchRepo.GetLastCompletedStageOnMachineAsync(machine.Id);
+
+                // Рассчитываем загруженность за сегодня
+                var todayUtilization = await CalculateTodayUtilization(machine.Id);
+
+                // Рассчитываем время до освобождения
+                var timeToFree = await CalculateTimeToFree(machine.Id);
 
                 return new MachineDto
                 {
@@ -389,15 +449,14 @@ namespace Project.Application.Services
                     MachineTypeName = machine.MachineType?.Name ?? "",
                     Priority = machine.Priority,
                     Status = status,
-                    CurrentStageId = currentStage?.Id,
-                    CurrentStageName = currentStage?.RouteStage?.Name,
-                    CurrentDetailName = currentStage?.SubBatch?.Batch?.Detail?.Name,
-                    QueueLength = queuedStages.Count,
-                    EstimatedAvailableTime = await CalculateEstimatedAvailableTime(machine.Id),
-                    UtilizationPercentage = utilizationData.UtilizationPercentage,
-                    LastMaintenanceDate = null, // Пока не реализовано в entity
-                    NextMaintenanceDate = null, // Пока не реализовано в entity
-                    CanDelete = await CanDeleteMachine(machine.Id)
+                    CurrentStageExecutionId = currentStage?.Id,
+                    CurrentStageDescription = GetStageDescription(currentStage),
+                    LastDetailId = lastStage?.SubBatch?.Batch?.DetailId,
+                    LastDetailName = lastStage?.SubBatch?.Batch?.Detail?.Name,
+                    LastStatusUpdateUtc = currentStage?.StatusChangedTimeUtc ?? DateTime.UtcNow,
+                    TodayUtilizationPercent = todayUtilization,
+                    TimeToFree = timeToFree,
+                    QueueLength = queuedStages.Count
                 };
             }
             catch (Exception ex)
@@ -413,95 +472,144 @@ namespace Project.Application.Services
                     MachineTypeName = machine.MachineType?.Name ?? "",
                     Priority = machine.Priority,
                     Status = MachineStatus.Unknown,
-                    CanDelete = false
+                    LastStatusUpdateUtc = DateTime.UtcNow
                 };
             }
         }
 
         /// <summary>
-        /// Расчет ожидаемого времени освобождения станка
+        /// Определение статуса станка согласно ТЗ
         /// </summary>
-        private async Task<DateTime?> CalculateEstimatedAvailableTime(int machineId)
+        private async Task<MachineStatus> DetermineMachineStatus(int machineId)
         {
             try
             {
                 var currentStage = await _batchRepo.GetCurrentStageOnMachineAsync(machineId);
-                if (currentStage == null) return DateTime.UtcNow; // Станок свободен
 
-                var estimatedEndTime = DateTime.UtcNow;
+                if (currentStage == null)
+                    return MachineStatus.Free; // Свободен
 
-                // Время завершения текущего этапа
-                if (currentStage.StartTimeUtc.HasValue)
-                {
-                    var elapsed = DateTime.UtcNow - currentStage.StartTimeUtc.Value;
-                    var remaining = currentStage.PlannedDuration - elapsed;
-                    estimatedEndTime = DateTime.UtcNow.Add(remaining > TimeSpan.Zero ? remaining : TimeSpan.FromMinutes(5));
-                }
+                if (currentStage.IsSetup)
+                    return MachineStatus.Setup; // Переналадка
 
-                // Добавляем время выполнения этапов в очереди
-                var queuedStages = await _batchRepo.GetQueuedStagesForMachineAsync(machineId);
-                foreach (var stage in queuedStages)
-                {
-                    estimatedEndTime = estimatedEndTime.Add(stage.PlannedDuration);
-                }
-
-                return estimatedEndTime;
+                return MachineStatus.Busy; // Занят
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Ошибка при расчете времени освобождения станка {MachineId}", machineId);
+                _logger.LogError(ex, "Ошибка при определении статуса станка {MachineId}", machineId);
+                return MachineStatus.Unknown;
+            }
+        }
+
+        /// <summary>
+        /// Получение ID занятых станков
+        /// </summary>
+        private async Task<List<int>> GetOccupiedMachineIdsAsync()
+        {
+            try
+            {
+                var inProgressStages = await _batchRepo.GetAllStageExecutionsAsync();
+                return inProgressStages
+                    .Where(se => se.Status == StageExecutionStatus.InProgress && se.MachineId.HasValue)
+                    .Select(se => se.MachineId!.Value)
+                    .Distinct()
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении ID занятых станков");
+                return new List<int>();
+            }
+        }
+
+        /// <summary>
+        /// Расчет доступных рабочих часов согласно ТЗ
+        /// </summary>
+        private double CalculateAvailableWorkingHours(DateTime startDate, DateTime endDate)
+        {
+            double totalHours = 0;
+
+            for (var date = startDate.Date; date < endDate.Date; date = date.AddDays(1))
+            {
+                // Пропускаем выходные дни согласно ТЗ (суббота, воскресенье)
+                if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+                    continue;
+
+                // Рабочие часы согласно ТЗ: 08:00-01:30 следующего дня = 17.5 часов
+                // Минус обеденный перерыв 12:00-13:00 = 1 час
+                // Минус перерыв на ужин 21:00-21:30 = 0.5 часа
+                // Итого: 16 рабочих часов в день
+                totalHours += 16;
+            }
+
+            return totalHours;
+        }
+
+        /// <summary>
+        /// Расчет загруженности за сегодня
+        /// </summary>
+        private async Task<decimal?> CalculateTodayUtilization(int machineId)
+        {
+            try
+            {
+                var today = DateTime.Today;
+                var tomorrow = today.AddDays(1);
+
+                var utilization = await GetMachineUtilizationAsync(machineId, today, tomorrow);
+                return utilization.UtilizationPercentage;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при расчете загруженности станка {MachineId} за сегодня", machineId);
                 return null;
             }
         }
 
         /// <summary>
-        /// Проверка возможности удаления станка
+        /// Расчет времени до освобождения станка
         /// </summary>
-        private async Task<bool> CanDeleteMachine(int machineId)
+        private async Task<TimeSpan?> CalculateTimeToFree(int machineId)
         {
             try
             {
-                var allStages = await _batchRepo.GetAllStageExecutionsAsync();
-                return !allStages.Any(se => se.MachineId == machineId &&
-                                          (se.Status == StageExecutionStatus.InProgress ||
-                                           se.Status == StageExecutionStatus.Pending ||
-                                           se.Status == StageExecutionStatus.Waiting));
+                var currentStage = await _batchRepo.GetCurrentStageOnMachineAsync(machineId);
+                if (currentStage == null)
+                    return null; // Станок уже свободен
+
+                if (!currentStage.StartTimeUtc.HasValue)
+                    return null;
+
+                // Рассчитываем оставшееся время
+                var elapsed = DateTime.UtcNow - currentStage.StartTimeUtc.Value;
+                var remaining = currentStage.PlannedDuration - elapsed;
+
+                return remaining > TimeSpan.Zero ? remaining : TimeSpan.FromMinutes(5);
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                _logger.LogError(ex, "Ошибка при расчете времени до освобождения станка {MachineId}", machineId);
+                return null;
             }
         }
 
         /// <summary>
-        /// Получение общей статистики станка
+        /// Получение описания этапа
         /// </summary>
-        private async Task<MachineStatisticsDto> GetMachineStatisticsAsync(int machineId, DateTime startDate, DateTime endDate)
+        private string? GetStageDescription(StageExecution? stage)
         {
-            try
-            {
-                var utilizationData = await GetMachineUtilizationAsync(machineId, startDate, endDate);
+            if (stage == null) return null;
 
-                return new MachineStatisticsDto
-                {
-                    MachineId = machineId,
-                    TotalWorkingHours = utilizationData.WorkingHours,
-                    TotalSetupHours = utilizationData.SetupHours,
-                    TotalIdleHours = utilizationData.IdleHours,
-                    UtilizationPercentage = utilizationData.UtilizationPercentage,
-                    CompletedOperations = utilizationData.CompletedOperations,
-                    SetupOperations = utilizationData.SetupOperations,
-                    AverageOperationTime = utilizationData.CompletedOperations > 0 ?
-                        utilizationData.WorkingHours / utilizationData.CompletedOperations : 0,
-                    AverageSetupTime = utilizationData.SetupOperations > 0 ?
-                        utilizationData.SetupHours / utilizationData.SetupOperations : 0
-                };
-            }
-            catch (Exception ex)
+            var description = stage.IsSetup ? "Переналадка: " : "";
+            description += stage.RouteStage?.Name ?? "Неизвестная операция";
+
+            if (stage.SubBatch?.Batch?.Detail != null)
             {
-                _logger.LogError(ex, "Ошибка при получении статистики станка {MachineId}", machineId);
-                throw;
+                description += $" ({stage.SubBatch.Batch.Detail.Name})";
             }
+
+            return description;
         }
+
+        #endregion
     }
 }

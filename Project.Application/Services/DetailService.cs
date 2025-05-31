@@ -193,7 +193,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение статистики производства по детали
+        /// Получение статистики производства по детали согласно ТЗ
         /// </summary>
         public async Task<DetailProductionStatisticsDto> GetProductionStatisticsAsync(int detailId, DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -206,34 +206,35 @@ namespace Project.Application.Services
                 startDate ??= DateTime.Today.AddDays(-30);
                 endDate ??= DateTime.Today.AddDays(1);
 
-                // Получаем все партии этой детали
+                // Получаем все партии этой детали в указанном периоде
                 var allBatches = await _batchRepo.GetAllAsync();
-                var detailBatches = allBatches.Where(b => b.DetailId == detailId).ToList();
+                var detailBatches = allBatches
+                    .Where(b => b.DetailId == detailId &&
+                                b.CreatedUtc >= startDate &&
+                                b.CreatedUtc <= endDate)
+                    .ToList();
 
-                // Фильтруем по дате
-                var filteredBatches = detailBatches.Where(b =>
-                    b.CreatedUtc >= startDate && b.CreatedUtc <= endDate).ToList();
-
-                // Получаем все этапы по этим партиям
-                var allStages = filteredBatches
+                // Получаем все основные этапы (не переналадки) по этим партиям
+                var allMainStages = detailBatches
                     .SelectMany(b => b.SubBatches)
                     .SelectMany(sb => sb.StageExecutions)
                     .Where(se => !se.IsSetup) // Только основные операции
                     .ToList();
 
-                var completedStages = allStages.Where(s => s.Status == StageExecutionStatus.Completed).ToList();
+                var completedStages = allMainStages.Where(s => s.Status == StageExecutionStatus.Completed).ToList();
 
                 // Подсчитываем статистику
-                var totalQuantityPlanned = filteredBatches.Sum(b => b.Quantity);
-                var totalQuantityCompleted = CalculateCompletedQuantity(filteredBatches);
+                var totalQuantityPlanned = detailBatches.Sum(b => b.Quantity);
+                var totalQuantityCompleted = CalculateCompletedQuantity(detailBatches);
+                var totalQuantityInProgress = CalculateInProgressQuantity(detailBatches);
 
-                var totalPlannedTime = allStages.Sum(s => s.PlannedDuration.TotalHours);
+                var totalPlannedTime = allMainStages.Sum(s => s.PlannedDuration.TotalHours);
                 var totalActualTime = completedStages
                     .Where(s => s.ActualWorkingTime.HasValue)
                     .Sum(s => s.ActualWorkingTime!.Value.TotalHours);
 
                 var averageTimePerUnit = totalQuantityCompleted > 0 ? totalActualTime / totalQuantityCompleted : 0;
-                var onTimeDeliveryRate = CalculateOnTimeDeliveryRate(filteredBatches);
+                var onTimeDeliveryRate = CalculateOnTimeDeliveryRate(detailBatches);
 
                 return new DetailProductionStatisticsDto
                 {
@@ -247,13 +248,13 @@ namespace Project.Application.Services
                     },
                     TotalQuantityPlanned = totalQuantityPlanned,
                     TotalQuantityCompleted = totalQuantityCompleted,
-                    TotalQuantityInProgress = CalculateInProgressQuantity(filteredBatches),
+                    TotalQuantityInProgress = totalQuantityInProgress,
                     CompletionPercentage = totalQuantityPlanned > 0 ?
                         (decimal)(totalQuantityCompleted * 100.0 / totalQuantityPlanned) : 0,
-                    TotalBatches = filteredBatches.Count,
-                    CompletedBatches = filteredBatches.Count(b => IsAllStagesCompleted(b)),
-                    InProgressBatches = filteredBatches.Count(b => HasInProgressStages(b)),
-                    QueuedBatches = filteredBatches.Count(b => HasOnlyPendingStages(b)),
+                    TotalBatches = detailBatches.Count,
+                    CompletedBatches = detailBatches.Count(b => IsAllMainStagesCompleted(b)),
+                    InProgressBatches = detailBatches.Count(b => HasInProgressStages(b)),
+                    QueuedBatches = detailBatches.Count(b => HasOnlyPendingStages(b)),
                     TotalPlannedHours = Math.Round(totalPlannedTime, 2),
                     TotalActualHours = Math.Round(totalActualTime, 2),
                     EfficiencyPercentage = totalActualTime > 0 ?
@@ -299,7 +300,7 @@ namespace Project.Application.Services
                             RouteStagesCount = route.Stages?.Count ?? 0,
                             LastBatchDate = recentBatches.FirstOrDefault()?.CreatedUtc,
                             AverageQuantity = averageQuantity,
-                            EstimatedDuration = CalculateEstimatedDuration(route, averageQuantity)
+                            EstimatedDuration = CalculateEstimatedDuration(route, averageQuantity > 0 ? averageQuantity : 1)
                         });
                     }
                 }
@@ -323,8 +324,7 @@ namespace Project.Application.Services
             try
             {
                 var route = await _routeRepo.GetByDetailIdAsync(detail.Id);
-                var statistics = await GetProductionStatisticsAsync(detail.Id,
-                    DateTime.Today.AddDays(-30), DateTime.Today.AddDays(1));
+                var usageStatistics = await GetDetailUsageStatistics(detail.Id);
 
                 return new DetailDto
                 {
@@ -332,13 +332,12 @@ namespace Project.Application.Services
                     Name = detail.Name,
                     Number = detail.Number,
                     HasRoute = route != null,
-                    RouteId = route?.Id,
-                    RouteStagesCount = route?.Stages?.Count ?? 0,
-                    TotalQuantityProduced = statistics.TotalQuantityCompleted,
-                    TotalBatchesCreated = statistics.TotalBatches,
-                    AverageTimePerUnit = statistics.AverageTimePerUnit,
-                    LastProductionDate = await GetLastProductionDate(detail.Id),
-                    CanDelete = await CanDeleteDetail(detail.Id)
+                    TotalManufacturingTimeHours = route != null ?
+                        route.Stages?.Sum(s => s.NormTime) : null,
+                    RouteStageCount = route?.Stages?.Count,
+                    CreatedUtc = DateTime.UtcNow, // Если нет поля CreatedUtc в Detail
+                    CanDelete = await CanDeleteDetail(detail.Id),
+                    UsageStatistics = usageStatistics
                 };
             }
             catch (Exception ex)
@@ -351,8 +350,64 @@ namespace Project.Application.Services
                     Name = detail.Name,
                     Number = detail.Number,
                     HasRoute = false,
-                    CanDelete = false
+                    CanDelete = false,
+                    CreatedUtc = DateTime.UtcNow
                 };
+            }
+        }
+
+        /// <summary>
+        /// Получение статистики использования детали
+        /// </summary>
+        private async Task<DetailUsageStatisticsDto> GetDetailUsageStatistics(int detailId)
+        {
+            try
+            {
+                var allBatches = await _batchRepo.GetAllAsync();
+                var detailBatches = allBatches.Where(b => b.DetailId == detailId).ToList();
+
+                var totalManufactured = detailBatches
+                    .Where(b => IsAllMainStagesCompleted(b))
+                    .Sum(b => b.Quantity);
+
+                var activeBatches = detailBatches.Count(b =>
+                    !IsAllMainStagesCompleted(b) && HasAnyActiveStages(b));
+
+                var lastManufacturedDate = detailBatches
+                    .Where(b => IsAllMainStagesCompleted(b))
+                    .OrderByDescending(b => b.CreatedUtc)
+                    .FirstOrDefault()?.CreatedUtc;
+
+                // Рассчитываем среднее время изготовления
+                var completedBatches = detailBatches.Where(b => IsAllMainStagesCompleted(b)).ToList();
+                double? averageManufacturingTime = null;
+
+                if (completedBatches.Any())
+                {
+                    var totalTime = completedBatches
+                        .SelectMany(b => b.SubBatches)
+                        .SelectMany(sb => sb.StageExecutions)
+                        .Where(se => !se.IsSetup && se.ActualWorkingTime.HasValue)
+                        .Sum(se => se.ActualWorkingTime!.Value.TotalHours);
+
+                    var totalQuantity = completedBatches.Sum(b => b.Quantity);
+                    if (totalQuantity > 0)
+                        averageManufacturingTime = totalTime / totalQuantity;
+                }
+
+                return new DetailUsageStatisticsDto
+                {
+                    TotalManufactured = totalManufactured,
+                    ActiveBatches = activeBatches,
+                    LastManufacturedDate = lastManufacturedDate,
+                    AverageManufacturingTime = averageManufacturingTime,
+                    EfficiencyPercentage = null // Можно добавить расчет эффективности
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при получении статистики использования детали {DetailId}", detailId);
+                return new DetailUsageStatisticsDto();
             }
         }
 
@@ -362,7 +417,7 @@ namespace Project.Application.Services
         private int CalculateCompletedQuantity(List<Batch> batches)
         {
             return batches
-                .Where(b => IsAllStagesCompleted(b))
+                .Where(b => IsAllMainStagesCompleted(b))
                 .Sum(b => b.Quantity);
         }
 
@@ -377,16 +432,16 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Проверка, все ли этапы партии завершены
+        /// Проверка, все ли основные этапы партии завершены
         /// </summary>
-        private bool IsAllStagesCompleted(Batch batch)
+        private bool IsAllMainStagesCompleted(Batch batch)
         {
-            var allStages = batch.SubBatches
+            var allMainStages = batch.SubBatches
                 .SelectMany(sb => sb.StageExecutions)
                 .Where(se => !se.IsSetup)
                 .ToList();
 
-            return allStages.Any() && allStages.All(se => se.Status == StageExecutionStatus.Completed);
+            return allMainStages.Any() && allMainStages.All(se => se.Status == StageExecutionStatus.Completed);
         }
 
         /// <summary>
@@ -404,14 +459,27 @@ namespace Project.Application.Services
         /// </summary>
         private bool HasOnlyPendingStages(Batch batch)
         {
-            var allStages = batch.SubBatches
+            var allMainStages = batch.SubBatches
                 .SelectMany(sb => sb.StageExecutions)
                 .Where(se => !se.IsSetup)
                 .ToList();
 
-            return allStages.Any() &&
-                   allStages.All(se => se.Status == StageExecutionStatus.Pending ||
-                                      se.Status == StageExecutionStatus.Waiting);
+            return allMainStages.Any() &&
+                   allMainStages.All(se => se.Status == StageExecutionStatus.Pending ||
+                                          se.Status == StageExecutionStatus.Waiting);
+        }
+
+        /// <summary>
+        /// Проверка, есть ли активные этапы (не завершенные)
+        /// </summary>
+        private bool HasAnyActiveStages(Batch batch)
+        {
+            return batch.SubBatches
+                .SelectMany(sb => sb.StageExecutions)
+                .Any(se => se.Status == StageExecutionStatus.InProgress ||
+                          se.Status == StageExecutionStatus.Pending ||
+                          se.Status == StageExecutionStatus.Waiting ||
+                          se.Status == StageExecutionStatus.Paused);
         }
 
         /// <summary>
@@ -419,10 +487,10 @@ namespace Project.Application.Services
         /// </summary>
         private double CalculateOnTimeDeliveryRate(List<Batch> batches)
         {
-            var completedBatches = batches.Where(b => IsAllStagesCompleted(b)).ToList();
+            var completedBatches = batches.Where(b => IsAllMainStagesCompleted(b)).ToList();
             if (!completedBatches.Any()) return 0;
 
-            // Упрощенный расчет - считаем что партии завершены в срок, если нет просроченных этапов
+            // Считаем партии завершенными в срок, если нет просроченных этапов
             var onTimeBatches = completedBatches.Where(b =>
                 !b.SubBatches.SelectMany(sb => sb.StageExecutions).Any(se => se.IsOverdue)).Count();
 
@@ -430,11 +498,12 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение метрик качества
+        /// Получение метрик качества (заглушка)
         /// </summary>
         private async Task<QualityMetricsDto> GetQualityMetrics(int detailId, DateTime startDate, DateTime endDate)
         {
             // Заглушка для метрик качества
+            await Task.CompletedTask;
             return new QualityMetricsDto
             {
                 DefectRate = 0,
@@ -470,27 +539,6 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение даты последнего производства
-        /// </summary>
-        private async Task<DateTime?> GetLastProductionDate(int detailId)
-        {
-            try
-            {
-                var allBatches = await _batchRepo.GetAllAsync();
-                var lastBatch = allBatches
-                    .Where(b => b.DetailId == detailId)
-                    .OrderByDescending(b => b.CreatedUtc)
-                    .FirstOrDefault();
-
-                return lastBatch?.CreatedUtc;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
         /// Проверка возможности удаления детали
         /// </summary>
         private async Task<bool> CanDeleteDetail(int detailId)
@@ -512,5 +560,56 @@ namespace Project.Application.Services
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// DTO для статистики производства детали
+    /// </summary>
+    public class DetailProductionStatisticsDto
+    {
+        public int DetailId { get; set; }
+        public string DetailName { get; set; } = string.Empty;
+        public string DetailNumber { get; set; } = string.Empty;
+        public ProductionPeriodDto Period { get; set; } = new();
+        public int TotalQuantityPlanned { get; set; }
+        public int TotalQuantityCompleted { get; set; }
+        public int TotalQuantityInProgress { get; set; }
+        public decimal CompletionPercentage { get; set; }
+        public int TotalBatches { get; set; }
+        public int CompletedBatches { get; set; }
+        public int InProgressBatches { get; set; }
+        public int QueuedBatches { get; set; }
+        public double TotalPlannedHours { get; set; }
+        public double TotalActualHours { get; set; }
+        public decimal EfficiencyPercentage { get; set; }
+        public double AverageTimePerUnit { get; set; }
+        public double OnTimeDeliveryRate { get; set; }
+        public QualityMetricsDto QualityMetrics { get; set; } = new();
+    }
+
+    public class ProductionPeriodDto
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+    }
+
+    public class DetailForBatchDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Number { get; set; } = string.Empty;
+        public bool HasRoute { get; set; }
+        public int RouteStagesCount { get; set; }
+        public DateTime? LastBatchDate { get; set; }
+        public int AverageQuantity { get; set; }
+        public TimeSpan? EstimatedDuration { get; set; }
+    }
+
+    public class QualityMetricsDto
+    {
+        public decimal DefectRate { get; set; }
+        public decimal ReworkRate { get; set; }
+        public decimal ScrapRate { get; set; }
+        public decimal FirstPassYield { get; set; }
     }
 }

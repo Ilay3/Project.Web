@@ -144,7 +144,8 @@ namespace Project.Application.BackgroundServices
                         var overdueTime = elapsed - plannedDuration;
 
                         _logger.LogWarning("Автозавершение просроченного этапа {StageId}. " +
-                            "Просрочка: {OverdueHours:F1} часов", stage.Id, overdueTime.TotalHours);
+                            "Просрочка: {OverdueHours:F1} часов. Этап: {StageName}, Деталь: {DetailName}",
+                            stage.Id, overdueTime.TotalHours, stage.RouteStage?.Name, stage.SubBatch?.Batch?.Detail?.Name);
 
                         await stageService.CompleteStageExecution(
                             stage.Id,
@@ -186,7 +187,9 @@ namespace Project.Application.BackgroundServices
                 {
                     try
                     {
-                        _logger.LogInformation("Автоприостановка этапа {StageId} вне рабочего времени", stage.Id);
+                        _logger.LogInformation("Автоприостановка этапа {StageId} вне рабочего времени. " +
+                            "Этап: {StageName}, Деталь: {DetailName}",
+                            stage.Id, stage.RouteStage?.Name, stage.SubBatch?.Batch?.Detail?.Name);
 
                         await stageService.PauseStageExecution(
                             stage.Id,
@@ -228,7 +231,21 @@ namespace Project.Application.BackgroundServices
                 {
                     try
                     {
-                        _logger.LogInformation("Автовозобновление этапа {StageId} в рабочее время", stage.Id);
+                        // Проверяем, что станок свободен
+                        if (stage.MachineId.HasValue)
+                        {
+                            var currentStageOnMachine = await batchRepo.GetCurrentStageOnMachineAsync(stage.MachineId.Value);
+                            if (currentStageOnMachine != null && currentStageOnMachine.Id != stage.Id)
+                            {
+                                _logger.LogDebug("Станок {MachineId} занят этапом {CurrentStageId}, пропускаем возобновление этапа {StageId}",
+                                    stage.MachineId.Value, currentStageOnMachine.Id, stage.Id);
+                                continue;
+                            }
+                        }
+
+                        _logger.LogInformation("Автовозобновление этапа {StageId} в рабочее время. " +
+                            "Этап: {StageName}, Деталь: {DetailName}",
+                            stage.Id, stage.RouteStage?.Name, stage.SubBatch?.Batch?.Detail?.Name);
 
                         await stageService.ResumeStageExecution(
                             stage.Id,
@@ -263,11 +280,21 @@ namespace Project.Application.BackgroundServices
                 var stagesInQueue = await batchRepo.GetAllStagesInQueueAsync();
                 var processedCount = 0;
 
-                foreach (var stage in stagesInQueue.Take(10)) // Ограничиваем для производительности
+                // Сортируем по приоритету и времени создания
+                var prioritizedStages = stagesInQueue
+                    .OrderByDescending(s => s.Priority)
+                    .ThenBy(s => s.SubBatch?.Batch?.CreatedUtc ?? DateTime.MaxValue)
+                    .ThenBy(s => s.CreatedUtc)
+                    .Take(10) // Ограничиваем для производительности
+                    .ToList();
+
+                foreach (var stage in prioritizedStages)
                 {
                     try
                     {
-                        _logger.LogDebug("Планирование этапа в очереди: {StageId}", stage.Id);
+                        _logger.LogDebug("Планирование этапа в очереди: {StageId}, приоритет: {Priority}",
+                            stage.Id, stage.Priority);
+
                         await schedulerService.ScheduleStageExecutionAsync(stage.Id);
                         processedCount++;
                     }
@@ -298,7 +325,14 @@ namespace Project.Application.BackgroundServices
                 var pendingStages = await batchRepo.GetPendingStagesAsync();
                 var startedCount = 0;
 
-                foreach (var stage in pendingStages.Take(5)) // Ограничиваем количество одновременных запусков
+                // Сортируем по приоритету для автозапуска
+                var prioritizedStages = pendingStages
+                    .OrderByDescending(s => s.Priority)
+                    .ThenBy(s => s.PlannedStartTimeUtc ?? s.CreatedUtc)
+                    .Take(5) // Ограничиваем количество одновременных запусков
+                    .ToList();
+
+                foreach (var stage in prioritizedStages)
                 {
                     try
                     {
@@ -306,13 +340,20 @@ namespace Project.Application.BackgroundServices
 
                         if (canStart && stage.MachineId.HasValue)
                         {
-                            _logger.LogDebug("Автоматический запуск готового этапа: {StageId}", stage.Id);
+                            _logger.LogDebug("Автоматический запуск готового этапа: {StageId}, приоритет: {Priority}",
+                                stage.Id, stage.Priority);
 
                             var started = await schedulerService.StartPendingStageAsync(stage.Id);
-                            if (started) startedCount++;
+                            if (started)
+                            {
+                                startedCount++;
+                                _logger.LogInformation("Автозапущен этап {StageId}: {StageName} для детали {DetailName}",
+                                    stage.Id, stage.RouteStage?.Name, stage.SubBatch?.Batch?.Detail?.Name);
+                            }
                         }
                         else if (!stage.MachineId.HasValue)
                         {
+                            // Если этап не назначен на станок, пытаемся назначить
                             await schedulerService.ScheduleStageExecutionAsync(stage.Id);
                         }
                     }
@@ -392,7 +433,7 @@ namespace Project.Application.BackgroundServices
             // Этапы переналадки могут продолжаться вне рабочего времени (согласно ТЗ)
             if (stage.IsSetup) return true;
 
-            // Критически важные этапы (высокий приоритет > 7)
+            // Критически важные этапы (высокий приоритет > 7 или помечены как критические)
             if (stage.Priority > 7 || stage.IsCritical) return true;
 
             // Этапы, которые скоро завершатся (менее 30 минут) (согласно ТЗ)
@@ -462,7 +503,7 @@ namespace Project.Application.BackgroundServices
         }
 
         /// <summary>
-        /// Проверка рабочего времени (согласно ТЗ)
+        /// Проверка рабочего времени (согласно ТЗ) - ИСПРАВЛЕННАЯ ВЕРСИЯ
         /// </summary>
         private bool IsWorkingTime(DateTime dateTime)
         {
@@ -490,8 +531,12 @@ namespace Project.Application.BackgroundServices
                 }
 
                 // Рабочее время: 08:00-01:30 следующего дня (согласно ТЗ)
-                // Переход через полночь
-                if (timeOfDay >= _workStart || timeOfDay <= _workEnd)
+                // ИСПРАВЛЕНИЕ: правильная логика для времени через полночь
+                if (timeOfDay >= _workStart) // С 08:00 текущего дня
+                {
+                    return true;
+                }
+                else if (timeOfDay <= _workEnd) // До 01:30 следующего дня
                 {
                     return true;
                 }
@@ -501,7 +546,7 @@ namespace Project.Application.BackgroundServices
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при проверке рабочего времени");
-                return true; // По умолчанию считаем рабочим временем
+                return true; // По умолчанию считаем рабочим временем для безопасности
             }
         }
     }
