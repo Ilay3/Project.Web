@@ -1,0 +1,313 @@
+﻿@model RoutesIndexViewModel
+@{
+    ViewData["Title"] = "Управление маршрутами";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-diagram-3"></i> Управление маршрутами
+    </h1>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createRouteModal">
+        <i class="bi bi-plus"></i> Создать маршрут
+    </button>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-6">
+                <input type="text" class="form-control" name="searchTerm" value="@Model.SearchTerm"
+                       placeholder="Поиск по детали">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="showOnlyEditable"
+                           checked="@Model.ShowOnlyEditable">
+                    <label class="form-check-label">Только редактируемые</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary">Найти</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Список маршрутов -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.Routes.Any())
+        {
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Деталь</th>
+                            <th>Номер детали</th>
+                            <th>Этапов</th>
+                            <th>Время изготовления</th>
+                            <th>Время переналадки</th>
+                            <th>Последнее изменение</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var route in Model.Routes)
+                        {
+                            <tr>
+                                <td>@route.DetailName</td>
+                                <td>@route.DetailNumber</td>
+                                <td>
+                                    <span class="badge bg-primary">@route.StageCount</span>
+                                </td>
+                                <td>@route.TotalNormTimeHours.ToString("F1")ч</td>
+                                <td>@route.TotalSetupTimeHours.ToString("F1")ч</td>
+                                <td>
+                                    @if (route.LastModifiedUtc.HasValue)
+                                    {
+                                        @route.LastModifiedUtc.Value.ToString("dd.MM.yyyy HH:mm")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" onclick="viewRoute(@route.Id)">Подробнее</a></li>
+                                            @if (route.CanEdit)
+                                            {
+                                                <li><a class="dropdown-item" onclick="editRoute(@route.Id)">Редактировать</a></li>
+                                                <li><a class="dropdown-item" onclick="copyRoute(@route.Id)">Копировать</a></li>
+                                            }
+                                            <li><a class="dropdown-item" onclick="exportRoute(@route.Id)">Экспорт</a></li>
+                                            @if (route.CanDelete)
+                                            {
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" onclick="deleteRoute(@route.Id)">Удалить</a></li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-diagram-3 display-1 text-muted"></i>
+                <h4>Маршруты не найдены</h4>
+                <p class="text-muted">Создайте новый маршрут</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно создания маршрута -->
+<div class="modal fade" id="createRouteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать маршрут</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createRouteForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Деталь *</label>
+                        <select class="form-select" name="DetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Этапы маршрута</label>
+                        <div id="stagesContainer">
+                            <div class="stage-item border p-3 mb-2">
+                                <div class="row">
+                                    <div class="col-md-1">
+                                        <label class="form-label">№</label>
+                                        <input type="number" class="form-control" name="stages[0].Order" value="1" min="1" required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Название этапа</label>
+                                        <input type="text" class="form-control" name="stages[0].Name" required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Тип станка</label>
+                                        <select class="form-select" name="stages[0].MachineTypeId" required>
+                                            <option value="">Выберите тип...</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Время (ч)</label>
+                                        <input type="number" class="form-control" name="stages[0].NormTime" step="0.1" min="0.1" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Переналадка (ч)</label>
+                                        <input type="number" class="form-control" name="stages[0].SetupTime" step="0.1" min="0" value="0">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn btn-outline-danger btn-sm d-block" onclick="removeStage(this)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-md-12">
+                                        <label class="form-label">Описание операции</label>
+                                        <input type="text" class="form-control" name="stages[0].Description">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary" onclick="addStage()">
+                            <i class="bi bi-plus"></i> Добавить этап
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать маршрут</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let stageCounter = 1;
+
+        function viewRoute(id) {
+            window.open(`@Url.Action("Details")/${id}`, '_blank');
+        }
+
+        function editRoute(id) {
+            window.location.href = `@Url.Action("Edit")/${id}`;
+        }
+
+        function copyRoute(id) {
+            window.location.href = `@Url.Action("Copy")/${id}`;
+        }
+
+        function exportRoute(id) {
+            window.open(`@Url.Action("Export")/${id}`, '_blank');
+        }
+
+        function deleteRoute(id) {
+            if (confirm('Удалить маршрут?')) {
+                fetch(`@Url.Action("Delete")/${id}`, {
+                    method: 'POST'
+                }).then(() => location.reload());
+            }
+        }
+
+        function addStage() {
+            const container = document.getElementById('stagesContainer');
+            const stageHtml = `
+                <div class="stage-item border p-3 mb-2">
+                    <div class="row">
+                        <div class="col-md-1">
+                            <label class="form-label">№</label>
+                            <input type="number" class="form-control" name="stages[${stageCounter}].Order" value="${stageCounter + 1}" min="1" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Название этапа</label>
+                            <input type="text" class="form-control" name="stages[${stageCounter}].Name" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Тип станка</label>
+                            <select class="form-select" name="stages[${stageCounter}].MachineTypeId" required>
+                                <option value="">Выберите тип...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Время (ч)</label>
+                            <input type="number" class="form-control" name="stages[${stageCounter}].NormTime" step="0.1" min="0.1" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Переналадка (ч)</label>
+                            <input type="number" class="form-control" name="stages[${stageCounter}].SetupTime" step="0.1" min="0" value="0">
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="button" class="btn btn-outline-danger btn-sm d-block" onclick="removeStage(this)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-12">
+                            <label class="form-label">Описание операции</label>
+                            <input type="text" class="form-control" name="stages[${stageCounter}].Description">
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', stageHtml);
+            stageCounter++;
+            loadMachineTypesForLastStage();
+        }
+
+        function removeStage(button) {
+            if (document.querySelectorAll('.stage-item').length > 1) {
+                button.closest('.stage-item').remove();
+            }
+        }
+
+        function loadMachineTypesForLastStage() {
+            const lastSelect = document.querySelector('.stage-item:last-child select[name$=".MachineTypeId"]');
+            fetch('@Url.Action("Search", "MachineTypes")?term=')
+                .then(response => response.json())
+                .then(data => {
+                    data.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.id;
+                        option.textContent = type.text;
+                        lastSelect.appendChild(option);
+                    });
+                });
+        }
+
+        document.getElementById('createRouteModal').addEventListener('show.bs.modal', function() {
+            // Загрузка деталей без маршрутов
+            fetch('@Url.Action("GetDetailsForBatch", "Details")')
+                .then(response => response.json())
+                .then(data => {
+                    const select = this.querySelector('select[name="DetailId"]');
+                    data.filter(d => !d.hasRoute).forEach(detail => {
+                        const option = document.createElement('option');
+                        option.value = detail.id;
+                        option.textContent = detail.text;
+                        select.appendChild(option);
+                    });
+                });
+
+            // Загрузка типов станков для первого этапа
+            loadMachineTypesForLastStage();
+        });
+
+        document.getElementById('createRouteForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('@Url.Action("Create")', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    location.reload();
+                }
+            });
+        });
+    </script>
+}

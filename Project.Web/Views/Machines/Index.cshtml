@@ -1,0 +1,960 @@
+﻿@using Project.Contracts.Enums
+@model MachinesIndexViewModel
+@{
+    ViewData["Title"] = "Управление станками";
+}
+
+@section Styles {
+    <style>
+        .machine-card {
+            transition: all 0.2s ease-in-out;
+            border-left: 4px solid #e9ecef;
+            height: 100%;
+        }
+
+            .machine-card:hover {
+                box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+                transform: translateY(-2px);
+            }
+
+            .machine-card.free {
+                border-left-color: #28a745;
+            }
+
+            .machine-card.busy {
+                border-left-color: #007bff;
+            }
+
+            .machine-card.setup {
+                border-left-color: #ffc107;
+            }
+
+            .machine-card.broken {
+                border-left-color: #dc3545;
+            }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+
+            .status-indicator.free {
+                background-color: #28a745;
+                animation: none;
+            }
+
+            .status-indicator.busy {
+                background-color: #007bff;
+            }
+
+            .status-indicator.setup {
+                background-color: #ffc107;
+            }
+
+            .status-indicator.broken {
+                background-color: #dc3545;
+            }
+
+        @@keyframes pulse {
+            0%
+
+        {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.5;
+        }
+
+        100% {
+            opacity: 1;
+        }
+
+        }
+
+        .utilization-bar {
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .utilization-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .utilization-excellent {
+            background: linear-gradient(90deg, #28a745, #20c997);
+        }
+
+        .utilization-good {
+            background: linear-gradient(90deg, #007bff, #17a2b8);
+        }
+
+        .utilization-average {
+            background: linear-gradient(90deg, #ffc107, #fd7e14);
+        }
+
+        .utilization-poor {
+            background: linear-gradient(90deg, #dc3545, #e83e8c);
+        }
+
+        .machine-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .filter-tabs {
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 1rem;
+        }
+
+        .filter-tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            color: #6c757d;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+            .filter-tab.active {
+                color: #007bff;
+                border-bottom-color: #007bff;
+            }
+
+            .filter-tab:hover {
+                color: #007bff;
+            }
+
+        .queue-item {
+            background: #f8f9fa;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.875rem;
+        }
+
+        .priority-badge {
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .priority-low {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .priority-normal {
+            background: #cfe2ff;
+            color: #0a58ca;
+        }
+
+        .priority-high {
+            background: #fff3cd;
+            color: #997404;
+        }
+
+        .priority-critical {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .action-buttons {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .machine-card:hover .action-buttons {
+            opacity: 1;
+        }
+    </style>
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="bi bi-gear-wide-connected text-primary"></i>
+        Управление станками
+    </h1>
+    <div>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMachineModal">
+            <i class="bi bi-plus"></i> Добавить станок
+        </button>
+        <button class="btn btn-outline-secondary" onclick="refreshMachines()">
+            <i class="bi bi-arrow-clockwise"></i> Обновить
+        </button>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="filter-tabs mb-3">
+    <button class="filter-tab @(Model.StatusFilter == null ? "active" : "")"
+            onclick="filterByStatus(null)">
+        Все (@Model.Machines.Count)
+    </button>
+    <button class="filter-tab @(Model.StatusFilter == MachineStatus.Free ? "active" : "")"
+            onclick="filterByStatus('Free')">
+        <span class="status-indicator free"></span>
+        Свободные (@Model.Machines.Count(m => m.Status == MachineStatus.Free))
+    </button>
+    <button class="filter-tab @(Model.StatusFilter == MachineStatus.Busy ? "active" : "")"
+            onclick="filterByStatus('Busy')">
+        <span class="status-indicator busy"></span>
+        Занятые (@Model.Machines.Count(m => m.Status == MachineStatus.Busy))
+    </button>
+    <button class="filter-tab @(Model.StatusFilter == MachineStatus.Setup ? "active" : "")"
+            onclick="filterByStatus('Setup')">
+        <span class="status-indicator setup"></span>
+        Переналадка (@Model.Machines.Count(m => m.Status == MachineStatus.Setup))
+    </button>
+    <button class="filter-tab @(Model.StatusFilter == MachineStatus.Broken ? "active" : "")"
+            onclick="filterByStatus('Broken')">
+        <span class="status-indicator broken"></span>
+        Неисправные (@Model.Machines.Count(m => m.Status == MachineStatus.Broken))
+    </button>
+</div>
+
+<!-- Дополнительные фильтры -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" onchange="filterByType(this.value)">
+            <option value="">Все типы станков</option>
+            @foreach (var type in Model.MachineTypes)
+            {
+                <option value="@type.Id" selected="@(Model.SelectedMachineTypeId == type.Id)">
+                    @type.Name (@type.MachineCount)
+                </option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <div class="input-group">
+            <input type="text" class="form-control" placeholder="Поиск по названию или номеру..."
+                   value="@Model.SearchTerm" onkeyup="searchMachines(this.value)">
+            <button class="btn btn-outline-secondary" onclick="clearSearch()">
+                <i class="bi bi-x"></i>
+            </button>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" onchange="sortMachines(this.value)">
+            <option value="name">По названию</option>
+            <option value="type">По типу</option>
+            <option value="status">По статусу</option>
+            <option value="utilization">По загрузке</option>
+            <option value="priority">По приоритету</option>
+        </select>
+    </div>
+</div>
+
+@if (Model.Machines.Any())
+{
+    <!-- Сетка станков -->
+    <div class="machine-grid">
+        @foreach (var machine in Model.Machines)
+        {
+            <div class="card machine-card @machine.Status.ToString().ToLower()" data-machine-id="@machine.Id">
+                <div class="card-body">
+                    <!-- Заголовок -->
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="flex-grow-1">
+                            <h6 class="card-title mb-1 d-flex align-items-center">
+                                <span class="status-indicator @machine.Status.ToString().ToLower()"></span>
+                                @machine.Name
+                            </h6>
+                            <small class="text-muted">
+                                @machine.InventoryNumber • @machine.MachineTypeName
+                            </small>
+                        </div>
+                        <div class="dropdown action-buttons">
+                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)"
+                                       onclick="viewMachineDetails(@machine.Id)">
+                                        <i class="bi bi-info-circle"></i> Подробнее
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)"
+                                       onclick="viewMachineSchedule(@machine.Id)">
+                                        <i class="bi bi-calendar3"></i> Расписание
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)"
+                                       onclick="viewMachineHistory(@machine.Id)">
+                                        <i class="bi bi-clock-history"></i> История
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)"
+                                       onclick="editMachine(@machine.Id)">
+                                        <i class="bi bi-pencil"></i> Редактировать
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)"
+                                       onclick="changeMachineStatus(@machine.Id, '@machine.Status')">
+                                        <i class="bi bi-gear"></i> Изменить статус
+                                    </a>
+                                </li>
+                                @if (machine.Status == MachineStatus.Broken)
+                                {
+                                    <li>
+                                        <a class="dropdown-item text-success" href="javascript:void(0)"
+                                           onclick="repairMachine(@machine.Id)">
+                                            <i class="bi bi-tools"></i> Отметить как исправленный
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Статус и текущая задача -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-@machine.StatusCssClass">
+                                @machine.StatusDisplayName
+                            </span>
+                            <span class="priority-badge priority-@(machine.Priority <= 3 ? "low" : machine.Priority <= 6 ? "normal" : machine.Priority <= 8 ? "high" : "critical")">
+                                Приоритет @machine.Priority
+                            </span>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(machine.CurrentStageDescription))
+                        {
+                            <div class="current-task">
+                                <small class="text-muted">Текущая задача:</small>
+                                <div class="fw-medium">@machine.CurrentStageDescription</div>
+                                @if (machine.TimeToFree.HasValue)
+                                {
+                                    <small class="text-muted">
+                                        Освободится через: @machine.TimeToFree.Value.ToString(@"hh\:mm")
+                                    </small>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Загрузка за сегодня -->
+                    @if (machine.TodayUtilizationPercent.HasValue)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">Загрузка за сегодня</small>
+                                <small class="fw-bold">@machine.TodayUtilizationPercent.Value%</small>
+                            </div>
+                            <div class="utilization-bar">
+                                <div class="utilization-fill @(machine.TodayUtilizationPercent >= 80 ? "utilization-excellent" :
+                                                                machine.TodayUtilizationPercent >= 60 ? "utilization-good" :
+                                                                machine.TodayUtilizationPercent >= 30 ? "utilization-average" : "utilization-poor")"
+                                     style="width: @machine.TodayUtilizationPercent.Value%"></div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Очередь -->
+                    @if (machine.QueueLength > 0)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <small class="text-muted">Очередь</small>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        onclick="viewMachineQueue(@machine.Id)">
+                                    @machine.QueueLength задач
+                                </button>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Быстрые действия -->
+                    <div class="row g-2">
+                        @if (machine.Status == MachineStatus.Free)
+                        {
+                            <div class="col-6">
+                                <button class="btn btn-sm btn-success w-100"
+                                        onclick="assignTaskToMachine(@machine.Id)">
+                                    <i class="bi bi-play"></i> Назначить задачу
+                                </button>
+                            </div>
+                        }
+                        @if (machine.Status == MachineStatus.Busy)
+                        {
+                            <div class="col-6">
+                                <button class="btn btn-sm btn-warning w-100"
+                                        onclick="pauseMachine(@machine.Id)">
+                                    <i class="bi bi-pause"></i> Приостановить
+                                </button>
+                            </div>
+                        }
+                        <div class="col-6">
+                            <button class="btn btn-sm btn-outline-secondary w-100"
+                                    onclick="viewMachineGantt(@machine.Id)">
+                                <i class="bi bi-bar-chart-steps"></i> Ганта
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="text-center py-5">
+        <i class="bi bi-gear display-1 text-muted"></i>
+        <h3 class="mt-3">Станки не найдены</h3>
+        <p class="text-muted">Добавьте новый станок или измените фильтры поиска</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMachineModal">
+            <i class="bi bi-plus"></i> Добавить первый станок
+        </button>
+    </div>
+}
+
+<!-- Модальное окно добавления станка -->
+<div class="modal fade" id="addMachineModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle"></i>
+                    Добавить новый станок
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addMachineForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название станка *</label>
+                        <input type="text" class="form-control" name="Name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Инвентарный номер *</label>
+                        <input type="text" class="form-control" name="InventoryNumber" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип станка *</label>
+                        <select class="form-select" name="MachineTypeId" required>
+                            <option value="">Выберите тип станка...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет (0-10)</label>
+                        <input type="number" class="form-control" name="Priority" min="0" max="10" value="5">
+                        <div class="form-text">Чем выше значение, тем выше приоритет использования</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check"></i> Добавить станок
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования станка -->
+<div class="modal fade" id="editMachineModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil"></i>
+                    Редактировать станок
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editMachineForm">
+                <input type="hidden" name="Id" id="editMachineId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название станка *</label>
+                        <input type="text" class="form-control" name="Name" id="editMachineName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Инвентарный номер *</label>
+                        <input type="text" class="form-control" name="InventoryNumber" id="editMachineInventoryNumber" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип станка *</label>
+                        <select class="form-select" name="MachineTypeId" id="editMachineTypeId" required>
+                            <option value="">Выберите тип станка...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет (0-10)</label>
+                        <input type="number" class="form-control" name="Priority" id="editMachinePriority" min="0" max="10">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check"></i> Сохранить изменения
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно изменения статуса -->
+<div class="modal fade" id="changeStatusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Изменить статус станка</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="statusMachineId">
+                <div class="mb-3">
+                    <label class="form-label">Новый статус</label>
+                    <select class="form-select" id="newMachineStatus">
+                        <option value="Free">Свободен</option>
+                        <option value="Busy">Занят</option>
+                        <option value="Setup">Переналадка</option>
+                        <option value="Broken">Неисправен</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Причина изменения</label>
+                    <textarea class="form-control" id="statusChangeReason" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="confirmStatusChange()">
+                    Изменить статус
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно назначения задачи -->
+<div class="modal fade" id="assignTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Назначить задачу станку</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="assignMachineId">
+                <div class="mb-3">
+                    <label class="form-label">Доступные задачи</label>
+                    <select class="form-select" id="availableTasks">
+                        <option value="">Загрузка...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Приоритет</label>
+                    <select class="form-select" id="taskPriority">
+                        <option value="Normal">Обычный</option>
+                        <option value="High">Высокий</option>
+                        <option value="Critical">Критический</option>
+                    </select>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="autoStart">
+                    <label class="form-check-label">
+                        Автоматически запустить выполнение
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="confirmTaskAssignment()">
+                    Назначить задачу
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Фильтрация и поиск
+        function filterByStatus(status) {
+            const url = new URL(window.location);
+            if (status) {
+                url.searchParams.set('status', status);
+            } else {
+                url.searchParams.delete('status');
+            }
+            window.location.href = url.toString();
+        }
+
+        function filterByType(typeId) {
+            const url = new URL(window.location);
+            if (typeId) {
+                url.searchParams.set('machineTypeId', typeId);
+            } else {
+                url.searchParams.delete('machineTypeId');
+            }
+            window.location.href = url.toString();
+        }
+
+        let searchTimeout;
+        function searchMachines(term) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const url = new URL(window.location);
+                if (term) {
+                    url.searchParams.set('searchTerm', term);
+                } else {
+                    url.searchParams.delete('searchTerm');
+                }
+                window.location.href = url.toString();
+            }, 500);
+        }
+
+        function clearSearch() {
+            const url = new URL(window.location);
+            url.searchParams.delete('searchTerm');
+            window.location.href = url.toString();
+        }
+
+        function sortMachines(sortBy) {
+            const cards = Array.from(document.querySelectorAll('.machine-card'));
+            const container = document.querySelector('.machine-grid');
+
+            cards.sort((a, b) => {
+                const aData = a.dataset;
+                const bData = b.dataset;
+                // Здесь может быть логика сортировки
+                return 0;
+            });
+
+            cards.forEach(card => container.appendChild(card));
+        }
+
+        function refreshMachines() {
+            location.reload();
+        }
+
+        // Действия со станками
+        function viewMachineDetails(machineId) {
+            window.open(`@Url.Action("Details")/${machineId}`, '_blank');
+        }
+
+        function viewMachineSchedule(machineId) {
+            window.open(`@Url.Action("Index", "Gantt")?SelectedMachineIds=${machineId}`, '_blank');
+        }
+
+        function viewMachineHistory(machineId) {
+            window.open(`@Url.Action("Index", "History")?MachineId=${machineId}`, '_blank');
+        }
+
+        function viewMachineQueue(machineId) {
+            window.open(`@Url.Action("Queue", "Planning")?machineId=${machineId}`, '_blank');
+        }
+
+        function viewMachineGantt(machineId) {
+            window.open(`@Url.Action("Index", "Gantt")?SelectedMachineIds=${machineId}`, '_blank');
+        }
+
+        function editMachine(machineId) {
+            // Загрузка данных станка для редактирования
+            fetch(`@Url.Action("Edit")/${machineId}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('editMachineId').value = data.id;
+                    document.getElementById('editMachineName').value = data.name;
+                    document.getElementById('editMachineInventoryNumber').value = data.inventoryNumber;
+                    document.getElementById('editMachineTypeId').value = data.machineTypeId;
+                    document.getElementById('editMachinePriority').value = data.priority;
+                    $('#editMachineModal').modal('show');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Ошибка загрузки данных станка', 'error');
+                });
+        }
+
+        function changeMachineStatus(machineId, currentStatus) {
+            document.getElementById('statusMachineId').value = machineId;
+            document.getElementById('newMachineStatus').value = currentStatus;
+            $('#changeStatusModal').modal('show');
+        }
+
+        function confirmStatusChange() {
+            const machineId = document.getElementById('statusMachineId').value;
+            const newStatus = document.getElementById('newMachineStatus').value;
+            const reason = document.getElementById('statusChangeReason').value;
+
+            fetch('@Url.Action("ChangeStatus")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    machineId: parseInt(machineId),
+                    newStatus: newStatus,
+                    reason: reason
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $('#changeStatusModal').modal('hide');
+                    showToast('Статус станка изменен', 'success');
+                    location.reload();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка изменения статуса', 'error');
+            });
+        }
+
+        function assignTaskToMachine(machineId) {
+            document.getElementById('assignMachineId').value = machineId;
+
+            // Загрузка доступных задач
+            fetch(`@Url.Action("GetAvailableTasks")?machineId=${machineId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('availableTasks');
+                    select.innerHTML = '<option value="">Выберите задачу...</option>';
+                    data.forEach(task => {
+                        const option = document.createElement('option');
+                        option.value = task.id;
+                        option.textContent = task.text;
+                        select.appendChild(option);
+                    });
+                    $('#assignTaskModal').modal('show');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Ошибка загрузки задач', 'error');
+                });
+        }
+
+        function confirmTaskAssignment() {
+            const machineId = document.getElementById('assignMachineId').value;
+            const taskId = document.getElementById('availableTasks').value;
+            const priority = document.getElementById('taskPriority').value;
+            const autoStart = document.getElementById('autoStart').checked;
+
+            if (!taskId) {
+                alert('Выберите задачу для назначения');
+                return;
+            }
+
+            fetch('@Url.Action("AssignTask")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    machineId: parseInt(machineId),
+                    taskId: parseInt(taskId),
+                    priority: priority,
+                    autoStart: autoStart
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $('#assignTaskModal').modal('hide');
+                    showToast('Задача назначена', 'success');
+                    location.reload();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка назначения задачи', 'error');
+            });
+        }
+
+        function pauseMachine(machineId) {
+            if (confirm('Приостановить работу станка?')) {
+                fetch('@Url.Action("Pause")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ machineId: machineId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Станок приостановлен', 'success');
+                        location.reload();
+                    } else {
+                        showToast(data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Ошибка приостановки', 'error');
+                });
+            }
+        }
+
+        function repairMachine(machineId) {
+            if (confirm('Отметить станок как исправленный?')) {
+                fetch('@Url.Action("MarkAsRepaired")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ machineId: machineId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Станок отмечен как исправленный', 'success');
+                        location.reload();
+                    } else {
+                        showToast(data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Ошибка обновления статуса', 'error');
+                });
+            }
+        }
+
+        // Работа с формами
+        document.getElementById('addMachineForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+
+            fetch('@Url.Action("Create")', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $('#addMachineModal').modal('hide');
+                    showToast('Станок добавлен', 'success');
+                    location.reload();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка добавления станка', 'error');
+            });
+        });
+
+        document.getElementById('editMachineForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+
+            fetch('@Url.Action("Edit")', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $('#editMachineModal').modal('hide');
+                    showToast('Станок обновлен', 'success');
+                    location.reload();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка обновления станка', 'error');
+            });
+        });
+
+        function showToast(message, type = 'info') {
+            const alertClass = type === 'success' ? 'alert-success' :
+                              type === 'error' ? 'alert-danger' : 'alert-info';
+
+            const toast = document.createElement('div');
+            toast.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+            toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            toast.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 5000);
+        }
+
+        // Загрузка типов станков при открытии модальных окон
+        function loadMachineTypes(selectId) {
+            fetch('@Url.Action("Search", "MachineTypes")?term=')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById(selectId);
+                    const currentOptions = select.querySelectorAll('option:not([value=""])');
+                    currentOptions.forEach(option => option.remove());
+
+                    data.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.id;
+                        option.textContent = type.text;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading machine types:', error);
+                });
+        }
+
+        // События модальных окон
+        document.getElementById('addMachineModal').addEventListener('show.bs.modal', function() {
+            loadMachineTypes('addMachineForm').querySelector('select[name="MachineTypeId"]').id || 'addMachineTypeSelect';
+        });
+
+        document.getElementById('editMachineModal').addEventListener('show.bs.modal', function() {
+            loadMachineTypes('editMachineTypeId');
+        });
+
+        // Автообновление каждые 30 секунд
+        setInterval(() => {
+            if (!document.hidden) {
+                // Обновление статусов без перезагрузки страницы
+                fetch('@Url.Action("GetMachineStatuses")')
+                    .then(response => response.json())
+                    .then(data => {
+                        data.forEach(machine => {
+                            const card = document.querySelector(`[data-machine-id="${machine.id}"]`);
+                            if (card) {
+                                // Обновление статуса и других динамических данных
+                                const statusIndicator = card.querySelector('.status-indicator');
+                                const statusBadge = card.querySelector('.badge');
+
+                                statusIndicator.className = `status-indicator ${machine.status.toLowerCase()}`;
+                                statusBadge.textContent = machine.statusDisplayName;
+                                statusBadge.className = `badge bg-${machine.statusCssClass}`;
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error updating statuses:', error);
+                    });
+            }
+        }, 30000);
+    </script>
+}

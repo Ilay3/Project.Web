@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Project.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class Create : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -204,13 +204,20 @@ namespace Project.Infrastructure.Migrations
                     QueuePosition = table.Column<int>(type: "integer", nullable: true),
                     ScheduledStartTimeUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     Priority = table.Column<int>(type: "integer", nullable: false),
-                    OperatorId = table.Column<string>(type: "text", nullable: true),
-                    ReasonNote = table.Column<string>(type: "text", nullable: true),
+                    OperatorId = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    ReasonNote = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    DeviceId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     IsProcessedByScheduler = table.Column<bool>(type: "boolean", nullable: false),
                     StatusChangedTimeUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    StartAttempts = table.Column<int>(type: "integer", nullable: false),
-                    LastErrorMessage = table.Column<string>(type: "text", nullable: true),
-                    DeviceId = table.Column<string>(type: "text", nullable: true)
+                    StartAttempts = table.Column<int>(type: "integer", nullable: true),
+                    LastErrorMessage = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    PlannedStartTimeUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastUpdatedUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    SetupStageId = table.Column<int>(type: "integer", nullable: true),
+                    MainStageId = table.Column<int>(type: "integer", nullable: true),
+                    IsCritical = table.Column<bool>(type: "boolean", nullable: false),
+                    CompletionPercentage = table.Column<decimal>(type: "numeric", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -295,6 +302,11 @@ namespace Project.Infrastructure.Migrations
                 column: "ToDetailId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_StageExecutions_IsProcessedByScheduler",
+                table: "StageExecutions",
+                column: "IsProcessedByScheduler");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_StageExecutions_IsSetup",
                 table: "StageExecutions",
                 column: "IsSetup");
@@ -305,9 +317,19 @@ namespace Project.Infrastructure.Migrations
                 column: "MachineId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_StageExecutions_MachineId_Status_QueuePosition",
+                table: "StageExecutions",
+                columns: new[] { "MachineId", "Status", "QueuePosition" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_StageExecutions_RouteStageId",
                 table: "StageExecutions",
                 column: "RouteStageId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StageExecutions_ScheduledStartTimeUtc",
+                table: "StageExecutions",
+                column: "ScheduledStartTimeUtc");
 
             migrationBuilder.CreateIndex(
                 name: "IX_StageExecutions_StartTimeUtc",
@@ -318,6 +340,16 @@ namespace Project.Infrastructure.Migrations
                 name: "IX_StageExecutions_Status",
                 table: "StageExecutions",
                 column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StageExecutions_Status_Priority_ScheduledStartTimeUtc",
+                table: "StageExecutions",
+                columns: new[] { "Status", "Priority", "ScheduledStartTimeUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StageExecutions_StatusChangedTimeUtc",
+                table: "StageExecutions",
+                column: "StatusChangedTimeUtc");
 
             migrationBuilder.CreateIndex(
                 name: "IX_StageExecutions_SubBatchId",

@@ -1,0 +1,254 @@
+﻿@model MachineTypesIndexViewModel
+@{
+    ViewData["Title"] = "Управление типами станков";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-grid-3x3-gap"></i> Управление типами станков
+    </h1>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTypeModal">
+        <i class="bi bi-plus"></i> Добавить тип
+    </button>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-6">
+                <input type="text" class="form-control" name="searchTerm" value="@Model.SearchTerm"
+                       placeholder="Поиск по названию">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="showOnlyWithMachines"
+                           checked="@Model.ShowOnlyWithMachines">
+                    <label class="form-check-label">Только с станками</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary">Найти</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Список типов станков -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.MachineTypes.Any())
+        {
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Станков</th>
+                            <th>Активных станков</th>
+                            <th>Ср. приоритет</th>
+                            <th>Операции</th>
+                            <th>Загрузка</th>
+                            <th>Создан</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var type in Model.MachineTypes)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@type.Name</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">@type.MachineCount</span>
+                                </td>
+                                <td>
+                                    @if (type.ActiveMachineCount > 0)
+                                    {
+                                        <span class="badge bg-success">@type.ActiveMachineCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">0</span>
+                                    }
+                                </td>
+                                <td>@type.AveragePriority.ToString("F1")</td>
+                                <td>
+                                    @if (type.SupportedOperations.Any())
+                                    {
+                                        @string.Join(", ", type.SupportedOperations.Take(3))
+                                        @if (type.SupportedOperations.Count > 3)
+                                        {
+                                            <span class="text-muted">... (+@(type.SupportedOperations.Count - 3))</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Не указаны</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (type.AverageUtilization > 0)
+                                    {
+                                        <span class="text-@(type.AverageUtilization >= 80 ? "success" : type.AverageUtilization >= 60 ? "warning" : "danger")">
+                                            @type.AverageUtilization.ToString("F1")%
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>@type.CreatedUtc.ToString("dd.MM.yyyy")</td>
+                                <td>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" onclick="viewType(@type.Id)">Подробнее</a></li>
+                                            <li><a class="dropdown-item" onclick="editType(@type.Id)">Редактировать</a></li>
+                                            <li><a class="dropdown-item" onclick="viewMachines(@type.Id)">Станки этого типа</a></li>
+                                            <li><a class="dropdown-item" onclick="addOperation(@type.Id)">Добавить операцию</a></li>
+                                            @if (type.CanDelete)
+                                            {
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" onclick="deleteType(@type.Id)">Удалить</a></li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-grid-3x3-gap display-1 text-muted"></i>
+                <h4>Типы станков не найдены</h4>
+                <p class="text-muted">Добавьте новый тип станка</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно создания типа -->
+<div class="modal fade" id="createTypeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить тип станка</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createTypeForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название типа *</label>
+                        <input type="text" class="form-control" name="Name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="Description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Поддерживаемые операции</label>
+                        <div id="operationsList">
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" name="operations[]" placeholder="Название операции">
+                                <button type="button" class="btn btn-outline-danger" onclick="removeOperation(this)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addOperationField()">
+                            <i class="bi bi-plus"></i> Добавить операцию
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function viewType(id) {
+            window.open(`@Url.Action("Details")/${id}`, '_blank');
+        }
+
+        function editType(id) {
+            window.location.href = `@Url.Action("Edit")/${id}`;
+        }
+
+        function viewMachines(id) {
+            window.location.href = `@Url.Action("Index", "Machines")?machineTypeId=${id}`;
+        }
+
+        function addOperation(id) {
+            const operation = prompt('Название операции:');
+            if (operation) {
+                fetch('@Url.Action("AddOperation")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id, operationName: operation })
+                }).then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Операция добавлена');
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                });
+            }
+        }
+
+        function deleteType(id) {
+            if (confirm('Удалить тип станка?')) {
+                fetch(`@Url.Action("Delete")/${id}`, {
+                    method: 'POST'
+                }).then(() => location.reload());
+            }
+        }
+
+        function addOperationField() {
+            const container = document.getElementById('operationsList');
+            const div = document.createElement('div');
+            div.className = 'input-group mb-2';
+            div.innerHTML = `
+                <input type="text" class="form-control" name="operations[]" placeholder="Название операции">
+                <button type="button" class="btn btn-outline-danger" onclick="removeOperation(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+            container.appendChild(div);
+        }
+
+        function removeOperation(button) {
+            if (document.querySelectorAll('#operationsList .input-group').length > 1) {
+                button.closest('.input-group').remove();
+            }
+        }
+
+        document.getElementById('createTypeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('@Url.Action("Create")', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    location.reload();
+                }
+            });
+        });
+    </script>
+}

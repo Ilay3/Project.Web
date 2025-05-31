@@ -1,0 +1,247 @@
+﻿@model DetailsIndexViewModel
+@{
+    ViewData["Title"] = "Управление деталями";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-box-seam"></i> Управление деталями
+    </h1>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createDetailModal">
+        <i class="bi bi-plus"></i> Добавить деталь
+    </button>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <input type="text" class="form-control" name="searchTerm" value="@Model.SearchTerm"
+                       placeholder="Поиск по названию или номеру">
+            </div>
+            <div class="col-md-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="showOnlyWithRoutes"
+                           checked="@Model.ShowOnlyWithRoutes">
+                    <label class="form-check-label">С маршрутами</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="showOnlyWithoutRoutes"
+                           checked="@Model.ShowOnlyWithoutRoutes">
+                    <label class="form-check-label">Без маршрутов</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary">Найти</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Список деталей -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.Details.Any())
+        {
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Номер</th>
+                            <th>Название</th>
+                            <th>Маршрут</th>
+                            <th>Время изготовления</th>
+                            <th>Изготовлено</th>
+                            <th>Активные партии</th>
+                            <th>Последнее производство</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var detail in Model.Details)
+                        {
+                            <tr>
+                                <td>@detail.Number</td>
+                                <td>@detail.Name</td>
+                                <td>
+                                    @if (detail.HasRoute)
+                                    {
+                                        <span class="badge bg-success">@detail.RouteStageCount этапов</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning">Нет маршрута</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (detail.TotalManufacturingTimeHours.HasValue)
+                                    {
+                                        @detail.TotalManufacturingTimeHours.Value.ToString("F1") <text>ч</text>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>@detail.TotalManufactured</td>
+                                <td>
+                                    @if (detail.ActiveBatches > 0)
+                                    {
+                                        <span class="badge bg-primary">@detail.ActiveBatches</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (detail.LastManufacturedDate.HasValue)
+                                    {
+                                        @detail.LastManufacturedDate.Value.ToString("dd.MM.yyyy")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Никогда</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" onclick="viewDetail(@detail.Id)">Подробнее</a></li>
+                                            <li><a class="dropdown-item" onclick="editDetail(@detail.Id)">Редактировать</a></li>
+                                            @if (!detail.HasRoute)
+                                            {
+                                                <li><a class="dropdown-item" onclick="createRoute(@detail.Id)">Создать маршрут</a></li>
+                                            }
+                                            <li><a class="dropdown-item" onclick="createBatch(@detail.Id)">Создать партию</a></li>
+                                            @if (detail.CanDelete)
+                                            {
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" onclick="deleteDetail(@detail.Id)">Удалить</a></li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-box display-1 text-muted"></i>
+                <h4>Детали не найдены</h4>
+                <p class="text-muted">Добавьте новую деталь или измените фильтры</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно создания детали -->
+<div class="modal fade" id="createDetailModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить деталь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createDetailForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Номер детали *</label>
+                        <input type="text" class="form-control" name="Number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Название *</label>
+                        <input type="text" class="form-control" name="Name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" name="Description" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Материал</label>
+                                <input type="text" class="form-control" name="Material">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Единица измерения</label>
+                                <input type="text" class="form-control" name="Unit" value="шт">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Вес (кг)</label>
+                                <input type="number" class="form-control" name="Weight" step="0.001">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Категория</label>
+                                <input type="text" class="form-control" name="Category">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function viewDetail(id) {
+            window.open(`@Url.Action("Details")/${id}`, '_blank');
+        }
+
+        function editDetail(id) {
+            window.location.href = `@Url.Action("Edit")/${id}`;
+        }
+
+        function createRoute(id) {
+            window.location.href = `@Url.Action("Create", "Routes")?detailId=${id}`;
+        }
+
+        function createBatch(id) {
+            window.location.href = `@Url.Action("Create", "Batches")?detailId=${id}`;
+        }
+
+        function deleteDetail(id) {
+            if (confirm('Удалить деталь?')) {
+                fetch(`@Url.Action("Delete")/${id}`, {
+                    method: 'POST'
+                }).then(() => location.reload());
+            }
+        }
+
+        document.getElementById('createDetailForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('@Url.Action("Create")', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    location.reload();
+                }
+            });
+        });
+    </script>
+}

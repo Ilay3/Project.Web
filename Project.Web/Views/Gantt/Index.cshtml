@@ -1,0 +1,851 @@
+﻿@model GanttViewModel
+@{
+    ViewData["Title"] = "Диаграмма Ганта";
+}
+
+@section Styles {
+    <style>
+        .gantt-container {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+        }
+        
+        .gantt-header {
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .gantt-timeline {
+            display: flex;
+            min-width: 100%;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .gantt-time-mark {
+            border-right: 1px solid #e9ecef;
+            padding: 0.5rem 0.25rem;
+            text-align: center;
+            font-size: 0.75rem;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        
+        .gantt-time-mark.major {
+            background: #e9ecef;
+            font-weight: bold;
+            border-right-color: #adb5bd;
+        }
+        
+        .gantt-body {
+            max-height: 70vh;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+        
+        .gantt-row {
+            display: flex;
+            align-items: center;
+            min-height: 60px;
+            border-bottom: 1px solid #e9ecef;
+            position: relative;
+        }
+        
+        .gantt-row:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .gantt-machine-info {
+            width: 200px;
+            flex-shrink: 0;
+            padding: 0.75rem;
+            border-right: 1px solid #dee2e6;
+            background: white;
+            position: sticky;
+            left: 0;
+            z-index: 10;
+        }
+        
+        .gantt-timeline-row {
+            flex: 1;
+            position: relative;
+            min-height: 60px;
+            display: flex;
+        }
+        
+        .gantt-time-slot {
+            border-right: 1px solid #f1f3f4;
+            min-width: 80px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        
+        .gantt-time-slot.current-time {
+            border-right: 2px solid #dc3545;
+        }
+        
+        .gantt-task {
+            position: absolute;
+            height: 36px;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            color: white;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            z-index: 5;
+        }
+        
+        .gantt-task:hover {
+            transform: scale(1.02);
+            z-index: 15;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .gantt-task.setup {
+            border-left: 4px solid #ffc107;
+            background: linear-gradient(45deg, #17a2b8, #20c997);
+        }
+        
+        .gantt-task.operation {
+            background: linear-gradient(45deg, #28a745, #20c997);
+        }
+        
+        .gantt-task.completed {
+            background: linear-gradient(45deg, #6f42c1, #e83e8c);
+        }
+        
+        .gantt-task.paused {
+            background: linear-gradient(45deg, #fd7e14, #ffc107);
+        }
+        
+        .gantt-task.overdue {
+            background: linear-gradient(45deg, #dc3545, #e74c3c);
+            animation: pulse 2s infinite;
+        }
+        
+        .gantt-task.critical {
+            border: 2px solid #dc3545;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @@keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        @@keyframes glow {
+            from { box-shadow: 0 0 5px #dc3545; }
+            to { box-shadow: 0 0 20px #dc3545, 0 0 30px #dc3545; }
+        }
+        
+        .machine-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        
+        .machine-status.free { background: #d4edda; color: #155724; }
+        .machine-status.busy { background: #cce5ff; color: #004085; }
+        .machine-status.setup { background: #fff3cd; color: #856404; }
+        .machine-status.broken { background: #f8d7da; color: #721c24; }
+        
+        .filter-panel {
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .gantt-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 20;
+        }
+        
+        .time-scale-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .current-time-indicator {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #dc3545;
+            z-index: 20;
+            pointer-events: none;
+        }
+        
+        .gantt-legend {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+        }
+    </style>
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="bi bi-bar-chart-steps text-primary"></i>
+        Диаграмма Ганта
+    </h1>
+    <div>
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+            <i class="bi bi-funnel"></i> Фильтры
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="refreshGantt()">
+            <i class="bi bi-arrow-clockwise"></i> Обновить
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#ganttSettingsModal">
+            <i class="bi bi-gear"></i> Настройки
+        </button>
+    </div>
+</div>
+
+<!-- Панель фильтров -->
+<div class="collapse" id="filterPanel">
+    <div class="filter-panel">
+        <form method="get" class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Дата начала</label>
+                <input type="date" class="form-control form-control-sm" name="StartDate" 
+                       value="@Model.Filter.StartDate.ToString("yyyy-MM-dd")">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Дата окончания</label>
+                <input type="date" class="form-control form-control-sm" name="EndDate" 
+                       value="@Model.Filter.EndDate.ToString("yyyy-MM-dd")">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Станки</label>
+                <select class="form-select form-select-sm" name="SelectedMachineIds" multiple>
+                    @foreach (var machine in Model.Filter.AvailableMachines)
+                    {
+                        <option value="@machine.Id" 
+                                selected="@(Model.Filter.SelectedMachineIds.Contains(machine.Id))">
+                                                @machine.Name
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Типы станков</label>
+                <select class="form-select form-select-sm" name="SelectedMachineTypeIds" multiple>
+                    @foreach (var type in Model.Filter.AvailableMachineTypes)
+                    {
+                        <option value="@type.Id" 
+                            selected="@(Model.Filter.SelectedMachineTypeIds.Contains(type.Id))">
+                                            @type.Name
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Детали</label>
+                <select class="form-select form-select-sm" name="SelectedDetailIds" multiple>
+                    @foreach (var detail in Model.Filter.AvailableDetails)
+                    {
+                            <option value="@detail.Id" 
+                                    selected="@(Model.Filter.SelectedDetailIds.Contains(detail.Id))">
+                            @detail.Name
+                            </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-sm me-2">
+                    <i class="bi bi-search"></i> Применить
+                </button>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-x"></i>
+                </a>
+            </div>
+        </form>
+        
+        <div class="mt-3">
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="ShowSetupsOnly" 
+                       @(Model.Filter.ShowSetupsOnly ? "checked" : "")>
+                <label class="form-check-label">Только переналадки</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="ShowOperationsOnly" 
+                       @(Model.Filter.ShowOperationsOnly ? "checked" : "")>
+                <label class="form-check-label">Только операции</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="ShowOverdueOnly" 
+                       @(Model.Filter.ShowOverdueOnly ? "checked" : "")>
+                <label class="form-check-label">Только просроченные</label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Диаграмма Ганта -->
+<div class="gantt-container">
+    <!-- Управление масштабом -->
+    <div class="gantt-controls">
+        <div class="time-scale-controls">
+            <button class="btn btn-sm btn-outline-secondary" onclick="changeTimeScale('hour')">Час</button>
+            <button class="btn btn-sm btn-outline-secondary active" onclick="changeTimeScale('day')">День</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="changeTimeScale('week')">Неделя</button>
+            <div class="vr"></div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="zoomIn()">
+                <i class="bi bi-zoom-in"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="zoomOut()">
+                <i class="bi bi-zoom-out"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Заголовок с временной шкалой -->
+    <div class="gantt-header">
+        <div style="display: flex;">
+            <div style="width: 200px; flex-shrink: 0; padding: 0.5rem; border-right: 1px solid #dee2e6;">
+                <strong>Станки</strong>
+            </div>
+            <div class="gantt-timeline">
+                @foreach (var timeMark in Model.Timeline.TimeMarks)
+                {
+                    <div class="gantt-time-mark @(timeMark.IsMajor ? "major" : "")" 
+                         style="left: @timeMark.PositionPercent%">
+                        @timeMark.DisplayText
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Тело диаграммы -->
+    <div class="gantt-body">
+        @foreach (var machine in Model.MachineRows)
+        {
+            <div class="gantt-row" data-machine-id="@machine.MachineId">
+                <!-- Информация о станке -->
+                <div class="gantt-machine-info">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">@machine.MachineName</div>
+                            <small class="text-muted">@machine.MachineTypeName</small>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)" 
+                                       onclick="viewMachineQueue(@machine.MachineId)">
+                                        <i class="bi bi-list-ol"></i> Очередь
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="javascript:void(0)" 
+                                       onclick="viewMachineHistory(@machine.MachineId)">
+                                        <i class="bi bi-clock-history"></i> История
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <span class="machine-status @machine.Status.ToString().ToLower()">
+                            @machine.StatusDisplayName
+                        </span>
+                    </div>
+                    <div class="mt-1">
+                        <small class="text-muted">
+                            Загрузка: @machine.UtilizationPercentage%
+                            @if (machine.QueueLength > 0)
+                            {
+                                <div>
+                                    <br>Очередь: @machine.QueueLength
+                                </div>
+                            }
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Временная шкала со задачами -->
+                <div class="gantt-timeline-row">
+                    @{
+                        var machineTasks = Model.Tasks.Where(t => t.MachineId == machine.MachineId);
+                    }
+                    
+                    <!-- Временные слоты -->
+                    @foreach (var timeMark in Model.Timeline.TimeMarks)
+                    {
+                        <div class="gantt-time-slot @(timeMark.Time.Hour == DateTime.Now.Hour && timeMark.Time.Date == DateTime.Today ? "current-time" : "")"></div>
+                    }
+
+                    <!-- Задачи -->
+                    @foreach (var task in machineTasks)
+                    {
+                        <div class="gantt-task @task.CssClass" 
+                             style="left: @task.LeftPositionPercent%; width: @task.WidthPercent%; background-color: @task.BackgroundColor;"
+                             data-task-id="@task.Id"
+                             data-bs-toggle="tooltip"
+                             title="@task.TooltipText"
+                             onclick="showTaskMenu(event, @task.Id)">
+                            
+                            <div class="d-flex align-items-center h-100">
+                                @if (task.IsSetup)
+                                {
+                                    <i class="bi bi-tools me-1"></i>
+                                }
+                                @if (task.IsCritical)
+                                {
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                }
+                                <span class="text-truncate">
+                                    @task.TaskTitle
+                                    @if (task.Quantity > 1)
+                                    {
+                                        <small>(@task.Quantity шт)</small>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (task.CompletionPercentage.HasValue && task.CompletionPercentage > 0)
+                            {
+                                <div style="position: absolute; bottom: 0; left: 0; height: 2px; width: @task.CompletionPercentage%; background: rgba(255,255,255,0.8);"></div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Индикатор текущего времени -->
+                    @{
+                        var currentTimePercent = (DateTime.Now - Model.Timeline.StartDate).TotalMinutes / Model.Timeline.ViewDuration.TotalMinutes * 100;
+                    }
+                    @if (currentTimePercent >= 0 && currentTimePercent <= 100)
+                    {
+                        <div class="current-time-indicator" style="left: @currentTimePercent%"></div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Легенда -->
+    <div class="gantt-legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #28a745, #20c997);"></div>
+            <span>Операция</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #17a2b8, #20c997);"></div>
+            <span>Переналадка</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #6f42c1, #e83e8c);"></div>
+            <span>Завершено</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #fd7e14, #ffc107);"></div>
+            <span>На паузе</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(45deg, #dc3545, #e74c3c);"></div>
+            <span>Просрочено</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #6c757d;"></div>
+            <span>Ожидает</span>
+        </div>
+    </div>
+</div>
+
+<!-- Контекстное меню для задач -->
+<div class="dropdown-menu" id="taskContextMenu" style="display: none; position: absolute; z-index: 1000;">
+    <h6 class="dropdown-header" id="taskMenuTitle">Управление этапом</h6>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="startTask()">
+        <i class="bi bi-play text-success"></i> Запустить
+    </a>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="pauseTask()">
+        <i class="bi bi-pause text-warning"></i> Приостановить
+    </a>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="completeTask()">
+        <i class="bi bi-check text-primary"></i> Завершить
+    </a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="reassignTask()">
+        <i class="bi bi-arrow-right"></i> Переназначить
+    </a>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="changeTaskPriority()">
+        <i class="bi bi-flag"></i> Изменить приоритет
+    </a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="javascript:void(0)" onclick="viewTaskDetails()">
+        <i class="bi bi-info-circle"></i> Подробнее
+    </a>
+    <a class="dropdown-item text-danger" href="javascript:void(0)" onclick="cancelTask()">
+        <i class="bi bi-x-circle"></i> Отменить
+    </a>
+</div>
+
+<!-- Модальное окно настроек диаграммы -->
+<div class="modal fade" id="ganttSettingsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Настройки диаграммы Ганта</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Автообновление</label>
+                    <select class="form-select" id="autoRefreshInterval">
+                        <option value="0">Отключено</option>
+                        <option value="30">30 секунд</option>
+                        <option value="60" selected>1 минута</option>
+                        <option value="300">5 минут</option>
+                    </select>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="showCompletedTasks" checked>
+                    <label class="form-check-label">Показывать завершенные задачи</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="highlightCriticalPath">
+                    <label class="form-check-label">Выделить критический путь</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="showResourceUtilization" checked>
+                    <label class="form-check-label">Показать загрузку станков</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveGanttSettings()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно переназначения -->
+<div class="modal fade" id="reassignTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Переназначить этап</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Новый станок</label>
+                    <select class="form-select" id="newMachineSelect">
+                        <option value="">Выберите станок...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Причина переназначения</label>
+                    <textarea class="form-control" id="reassignReason" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="confirmReassign()">Переназначить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let currentTaskId = null;
+        let refreshTimer = null;
+
+        // Инициализация тултипов
+        document.addEventListener('DOMContentLoaded', function() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            setupAutoRefresh();
+            loadAvailableMachines();
+        });
+
+        function showTaskMenu(event, taskId) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            currentTaskId = taskId;
+            const menu = document.getElementById('taskContextMenu');
+            
+            menu.style.display = 'block';
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+
+            // Скрыть меню при клике вне его
+            document.addEventListener('click', hideTaskMenu);
+        }
+
+        function hideTaskMenu() {
+            document.getElementById('taskContextMenu').style.display = 'none';
+            document.removeEventListener('click', hideTaskMenu);
+        }
+
+        function startTask() {
+            if (currentTaskId) {
+                executeTaskAction('start', 'Запуск этапа...');
+            }
+            hideTaskMenu();
+        }
+
+        function pauseTask() {
+            if (currentTaskId) {
+                const reason = prompt('Причина приостановки:');
+                if (reason !== null) {
+                    executeTaskAction('pause', 'Приостановка этапа...', reason);
+                }
+            }
+            hideTaskMenu();
+        }
+
+        function completeTask() {
+            if (currentTaskId && confirm('Завершить этап?')) {
+                executeTaskAction('complete', 'Завершение этапа...');
+            }
+            hideTaskMenu();
+        }
+
+        function cancelTask() {
+            if (currentTaskId) {
+                const reason = prompt('Причина отмены:');
+                if (reason) {
+                    executeTaskAction('cancel', 'Отмена этапа...', reason);
+                }
+            }
+            hideTaskMenu();
+        }
+
+        function reassignTask() {
+            if (currentTaskId) {
+                $('#reassignTaskModal').modal('show');
+            }
+            hideTaskMenu();
+        }
+
+        function confirmReassign() {
+            const newMachineId = document.getElementById('newMachineSelect').value;
+            const reason = document.getElementById('reassignReason').value;
+            
+            if (!newMachineId) {
+                alert('Выберите станок для переназначения');
+                return;
+            }
+
+            fetch('@Url.Action("ManageTask")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stageExecutionId: currentTaskId,
+                    action: 'reassign',
+                    reason: reason,
+                    newMachineId: parseInt(newMachineId)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $('#reassignTaskModal').modal('hide');
+                    showToast(data.message, 'success');
+                    refreshGantt();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка переназначения', 'error');
+            });
+        }
+
+        function executeTaskAction(action, loadingText, reason = null) {
+            showToast(loadingText, 'info');
+            
+            fetch('@Url.Action("ManageTask")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stageExecutionId: currentTaskId,
+                    action: action,
+                    reason: reason
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    refreshGantt();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Ошибка выполнения операции', 'error');
+            });
+        }
+
+        function viewTaskDetails() {
+            if (currentTaskId) {
+                window.open(`@Url.Action("Details", "StageExecution")/${currentTaskId}`, '_blank');
+            }
+            hideTaskMenu();
+        }
+
+        function changeTaskPriority() {
+            if (currentTaskId) {
+                const priority = prompt('Новый приоритет (Low/Normal/High/Critical):');
+                if (priority) {
+                    // Реализация изменения приоритета
+                    showToast('Приоритет изменен', 'success');
+                }
+            }
+            hideTaskMenu();
+        }
+
+        function viewMachineQueue(machineId) {
+            window.open(`@Url.Action("Queue", "Planning")?machineId=${machineId}`, '_blank');
+        }
+
+        function viewMachineHistory(machineId) {
+            window.open(`@Url.Action("Index", "History")?machineId=${machineId}`, '_blank');
+        }
+
+        function refreshGantt() {
+            location.reload();
+        }
+
+        function changeTimeScale(scale) {
+            // Изменение масштаба времени
+            const url = new URL(window.location);
+            url.searchParams.set('timeScale', scale);
+            window.location.href = url.toString();
+        }
+
+        function zoomIn() {
+            document.querySelectorAll('.gantt-time-slot').forEach(slot => {
+                const currentWidth = parseInt(slot.style.minWidth || '80');
+                slot.style.minWidth = Math.min(currentWidth * 1.2, 200) + 'px';
+            });
+        }
+
+        function zoomOut() {
+            document.querySelectorAll('.gantt-time-slot').forEach(slot => {
+                const currentWidth = parseInt(slot.style.minWidth || '80');
+                slot.style.minWidth = Math.max(currentWidth * 0.8, 40) + 'px';
+            });
+        }
+
+        function setupAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+            
+            const interval = localStorage.getItem('ganttAutoRefresh') || '60';
+            if (interval !== '0') {
+                refreshTimer = setInterval(() => {
+                    refreshGantt();
+                }, parseInt(interval) * 1000);
+            }
+        }
+
+        function saveGanttSettings() {
+            const autoRefresh = document.getElementById('autoRefreshInterval').value;
+            const showCompleted = document.getElementById('showCompletedTasks').checked;
+            const highlightCritical = document.getElementById('highlightCriticalPath').checked;
+            const showUtilization = document.getElementById('showResourceUtilization').checked;
+            
+            localStorage.setItem('ganttAutoRefresh', autoRefresh);
+            localStorage.setItem('ganttShowCompleted', showCompleted);
+            localStorage.setItem('ganttHighlightCritical', highlightCritical);
+            localStorage.setItem('ganttShowUtilization', showUtilization);
+            
+            setupAutoRefresh();
+            $('#ganttSettingsModal').modal('hide');
+            showToast('Настройки сохранены', 'success');
+        }
+
+        function loadAvailableMachines() {
+            fetch('@Url.Action("GetAvailableByType", "Machines")?machineTypeId=0')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('newMachineSelect');
+                    data.forEach(machine => {
+                        const option = document.createElement('option');
+                        option.value = machine.id;
+                        option.textContent = machine.text;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading machines:', error);
+                });
+        }
+
+        function showToast(message, type = 'info') {
+            const alertClass = type === 'success' ? 'alert-success' : 
+                              type === 'error' ? 'alert-danger' : 'alert-info';
+            
+            const toast = document.createElement('div');
+            toast.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+            toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            toast.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 5000);
+        }
+
+        // Обработка горизонтальной прокрутки
+        document.querySelector('.gantt-body').addEventListener('scroll', function(e) {
+            // Синхронизация прокрутки заголовка
+            const header = document.querySelector('.gantt-timeline');
+            if (header) {
+                header.style.transform = `translateX(-${e.target.scrollLeft}px)`;
+            }
+        });
+    </script>
+}

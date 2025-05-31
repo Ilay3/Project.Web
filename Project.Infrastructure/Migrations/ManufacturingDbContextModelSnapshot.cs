@@ -220,12 +220,21 @@ namespace Project.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal?>("CompletionPercentage")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("DeviceId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
                     b.Property<DateTime?>("EndTimeUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCritical")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsProcessedByScheduler")
                         .HasColumnType("boolean");
@@ -237,7 +246,13 @@ namespace Project.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<DateTime?>("LastUpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int?>("MachineId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MainStageId")
                         .HasColumnType("integer");
 
                     b.Property<string>("OperatorId")
@@ -245,6 +260,9 @@ namespace Project.Infrastructure.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.Property<DateTime?>("PauseTimeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PlannedStartTimeUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Priority")
@@ -265,6 +283,9 @@ namespace Project.Infrastructure.Migrations
 
                     b.Property<DateTime?>("ScheduledStartTimeUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("SetupStageId")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("StartAttempts")
                         .HasColumnType("integer");

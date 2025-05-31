@@ -1,0 +1,577 @@
+﻿@model DashboardViewModel
+@{
+    ViewData["Title"] = "Главная панель управления";
+}
+
+@section Styles {
+    <style>
+        .stat-card {
+            border-left: 4px solid #007bff;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            transition: all 0.15s ease-in-out;
+        }
+
+            .stat-card:hover {
+                box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+                transform: translateY(-2px);
+            }
+
+            .stat-card.success {
+                border-left-color: #28a745;
+            }
+
+            .stat-card.warning {
+                border-left-color: #ffc107;
+            }
+
+            .stat-card.danger {
+                border-left-color: #dc3545;
+            }
+
+            .stat-card.info {
+                border-left-color: #17a2b8;
+            }
+
+        .progress-sm {
+            height: 0.5rem;
+        }
+
+        .machine-status-item {
+            padding: 0.5rem 1rem;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+            .machine-status-item:hover {
+                background-color: #f8f9fa;
+                border-left-color: #007bff;
+            }
+
+        .alert-item {
+            border-left: 4px solid;
+            margin-bottom: 0.5rem;
+        }
+
+            .alert-item.alert-warning {
+                border-left-color: #ffc107;
+            }
+
+            .alert-item.alert-danger {
+                border-left-color: #dc3545;
+            }
+
+            .alert-item.alert-info {
+                border-left-color: #17a2b8;
+            }
+
+        .recent-event {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+            transition: background-color 0.2s;
+        }
+
+            .recent-event:hover {
+                background-color: #f8f9fa;
+            }
+
+            .recent-event:last-child {
+                border-bottom: none;
+            }
+    </style>
+}
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="h3 mb-0">
+                <i class="bi bi-speedometer2 text-primary"></i>
+                Главная панель управления
+            </h1>
+            <div>
+                <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                    <i class="bi bi-gear"></i> Настройки
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Статистика производства -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card success h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-1">Активные партии</h6>
+                        <h3 class="mb-0">@Model.ProductionOverview.ActiveBatches</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-boxes fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card info h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-1">Работающие станки</h6>
+                        <h3 class="mb-0">@Model.ProductionOverview.WorkingMachines</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-gear-wide-connected fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card warning h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-1">Этапы в очереди</h6>
+                        <h3 class="mb-0">@Model.ProductionOverview.QueuedStages</h3>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-hourglass-split fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-1">Эффективность</h6>
+                        <h3 class="mb-0">@Model.ProductionOverview.OverallEfficiency%</h3>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-graph-up fs-2"></i>
+                    </div>
+                </div>
+                <div class="progress progress-sm mt-2">
+                    <div class="progress-bar" style="width: @Model.ProductionOverview.OverallEfficiency%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Левая колонка -->
+    <div class="col-lg-8">
+        <!-- Статистика по станкам -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-diagram-3"></i>
+                    Состояние станков
+                </h5>
+                <a href="@Url.Action("Index", "Machines")" class="btn btn-sm btn-outline-primary">
+                    Все станки
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-3">
+                        <div class="text-success">
+                            <i class="bi bi-check-circle fs-1"></i>
+                            <h4>@Model.MachineOverview.FreeMachines</h4>
+                            <small class="text-muted">Свободно</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-primary">
+                            <i class="bi bi-gear-fill fs-1"></i>
+                            <h4>@Model.MachineOverview.BusyMachines</h4>
+                            <small class="text-muted">Работают</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-warning">
+                            <i class="bi bi-tools fs-1"></i>
+                            <h4>@Model.MachineOverview.SetupMachines</h4>
+                            <small class="text-muted">Переналадка</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-danger">
+                            <i class="bi bi-exclamation-triangle fs-1"></i>
+                            <h4>@Model.MachineOverview.BrokenMachines</h4>
+                            <small class="text-muted">Неисправны</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Активные партии -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-task"></i>
+                    Активные партии
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createBatchModal">
+                        <i class="bi bi-plus"></i> Создать
+                    </button>
+                    <a href="@Url.Action("Index", "Batches")" class="btn btn-sm btn-outline-primary">
+                        Все партии
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (Model.ActiveBatches.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Деталь</th>
+                                    <th>Количество</th>
+                                    <th>Прогресс</th>
+                                    <th>Приоритет</th>
+                                    <th>Статус</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var batch in Model.ActiveBatches.Take(5))
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@batch.DetailName</strong><br>
+                                            <small class="text-muted">@batch.DetailNumber</small>
+                                        </td>
+                                        <td>@batch.Quantity шт</td>
+                                        <td>
+                                            <div class="progress progress-sm">
+                                                <div class="progress-bar" style="width: @batch.CompletionPercentage%"></div>
+                                            </div>
+                                            <small>@batch.CompletionPercentage%</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-@batch.PriorityBadgeClass">
+                                                @batch.Priority
+                                            </span>
+                                        </td>
+                                        <td>@batch.StatusText</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary"
+                                                    onclick="viewBatch(@batch.Id)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-inbox fs-1"></i>
+                        <p>Нет активных партий</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Очередь этапов -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history"></i>
+                    Очередь этапов
+                </h5>
+                <a href="@Url.Action("Queue", "Planning")" class="btn btn-sm btn-outline-primary">
+                    Управление очередью
+                </a>
+            </div>
+            <div class="card-body">
+                @if (Model.QueuedStages.Any())
+                {
+                    @foreach (var stage in Model.QueuedStages.Take(5))
+                    {
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="me-3">
+                                <span class="badge bg-secondary">#@stage.QueuePosition</span>
+                            </div>
+                            <div class="flex-grow-1">
+                                <strong>@stage.DetailName</strong> - @stage.StageName
+                                <br>
+                                <small class="text-muted">
+                                    @if (!string.IsNullOrEmpty(stage.MachineName))
+                                    {
+                                        <i class="bi bi-gear"></i> @stage.MachineName
+                                    }
+                                    <i class="bi bi-clock"></i> @stage.WaitingTimeText
+                                    @if (stage.RequiresSetup)
+                                    {
+                                        <i class="bi bi-tools text-warning"></i>
+                                    }
+                                </small>
+                            </div>
+                            <div>
+                                <span class="badge bg-@stage.PriorityBadgeClass">
+                                    @stage.Priority
+                                </span>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-check-circle fs-1"></i>
+                        <p>Очередь пуста</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Правая колонка -->
+    <div class="col-lg-4">
+        <!-- Алерты -->
+        @if (Model.Alerts.Any())
+        {
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Уведомления
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @foreach (var alert in Model.Alerts)
+                    {
+                        <div class="alert alert-@alert.Type alert-item" role="alert">
+                            <div class="d-flex align-items-start">
+                                <i class="@alert.IconClass me-2 mt-1"></i>
+                                <div class="flex-grow-1">
+                                    <strong>@alert.Title</strong>
+                                    <p class="mb-1">@alert.Message</p>
+                                    @if (!string.IsNullOrEmpty(alert.ActionUrl))
+                                    {
+                                        <a href="@alert.ActionUrl" class="btn btn-sm btn-outline-dark">
+                                            @alert.ActionText
+                                        </a>
+                                    }
+                                </div>
+                                @if (alert.IsDismissible)
+                                {
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Недавние события -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-activity"></i>
+                    Недавние события
+                </h5>
+                <a href="@Url.Action("Index", "History")" class="btn btn-sm btn-outline-primary">
+                    История
+                </a>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.RecentEvents.Any())
+                {
+                    @foreach (var ev in Model.RecentEvents.Take(8))
+                    {
+                        <div class="recent-event">
+                            <div class="d-flex align-items-center">
+                                <i class="@ev.Icon @ev.CssClass me-2"></i>
+                                <div class="flex-grow-1">
+                                    <div class="fw-medium">@ev.Message</div>
+                                    <small class="text-muted">@ev.TimeAgoText</small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-calendar-x fs-1"></i>
+                        <p>Нет событий</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно создания партии -->
+<div class="modal fade" id="createBatchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать новую партию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createBatchForm">
+                    <div class="mb-3">
+                        <label class="form-label">Деталь</label>
+                        <select class="form-select" name="DetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Количество</label>
+                        <input type="number" class="form-control" name="Quantity" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Приоритет</label>
+                        <select class="form-select" name="Priority">
+                            <option value="Normal">Обычный</option>
+                            <option value="High">Высокий</option>
+                            <option value="Critical">Критический</option>
+                            <option value="Low">Низкий</option>
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="AutoStartPlanning" checked>
+                        <label class="form-check-label">
+                            Автоматически запустить планирование
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createBatch()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно настроек -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Настройки панели</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Интервал обновления</label>
+                    <select class="form-select" id="refreshInterval">
+                        <option value="30">30 секунд</option>
+                        <option value="60" selected>1 минута</option>
+                        <option value="300">5 минут</option>
+                        <option value="0">Отключить</option>
+                    </select>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="showNotifications" checked>
+                    <label class="form-check-label">
+                        Показывать уведомления
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveSettings()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let refreshTimer;
+
+        function refreshDashboard() {
+            location.reload();
+        }
+
+        function viewBatch(id) {
+            window.location.href = '@Url.Action("Details", "Batches")/' + id;
+        }
+
+        function createBatch() {
+            const form = document.getElementById('createBatchForm');
+            const formData = new FormData(form);
+
+            fetch('@Url.Action("Create", "Batches")', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    $('#createBatchModal').modal('hide');
+                    location.reload();
+                } else {
+                    alert('Ошибка при создании партии');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Ошибка при создании партии');
+            });
+        }
+
+        function saveSettings() {
+            const interval = document.getElementById('refreshInterval').value;
+            const notifications = document.getElementById('showNotifications').checked;
+
+            localStorage.setItem('refreshInterval', interval);
+            localStorage.setItem('showNotifications', notifications);
+
+            setupAutoRefresh();
+            $('#settingsModal').modal('hide');
+        }
+
+        function setupAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+
+            const interval = localStorage.getItem('refreshInterval') || '60';
+            if (interval !== '0') {
+                refreshTimer = setInterval(() => {
+                    refreshDashboard();
+                }, parseInt(interval) * 1000);
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            setupAutoRefresh();
+
+            // Загрузка деталей для формы создания партии
+            fetch('@Url.Action("GetDetailsForBatch", "Details")')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.querySelector('#createBatchModal select[name="DetailId"]');
+                    data.forEach(detail => {
+                        const option = document.createElement('option');
+                        option.value = detail.id;
+                        option.textContent = detail.text;
+                        select.appendChild(option);
+                    });
+                });
+        });
+    </script>
+}

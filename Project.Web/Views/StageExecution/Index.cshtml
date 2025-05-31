@@ -1,0 +1,503 @@
+﻿@model StageExecutionIndexViewModel
+@{
+    ViewData["Title"] = "Управление этапами выполнения";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-play-circle"></i> Управление этапами выполнения
+    </h1>
+    <div>
+        <button class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+            <i class="bi bi-funnel"></i> Фильтры
+        </button>
+        <button class="btn btn-primary" onclick="bulkAction()">
+            <i class="bi bi-lightning"></i> Массовые операции
+        </button>
+    </div>
+</div>
+
+<!-- Панель фильтров -->
+<div class="collapse" id="filterPanel">
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Поиск</label>
+                    <input type="text" class="form-control" name="SearchTerm" value="@Model.Filter.SearchTerm"
+                           placeholder="Деталь или этап">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Станок</label>
+                    <select class="form-select" name="MachineId">
+                        <option value="">Все станки</option>
+                        @foreach (var machine in Model.Filter.AvailableMachines)
+                        {
+                            <option value="@machine.Id" selected="@(Model.Filter.MachineId == machine.Id)">
+                                @machine.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Деталь</label>
+                    <select class="form-select" name="DetailId">
+                        <option value="">Все детали</option>
+                        @foreach (var detail in Model.Filter.AvailableDetails)
+                        {
+                            <option value="@detail.Id" selected="@(Model.Filter.DetailId == detail.Id)">
+                                @detail.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Статус</label>
+                    <select class="form-select" name="SelectedStatuses" multiple>
+                        <option value="AwaitingStart">Ожидает запуска</option>
+                        <option value="InQueue">В очереди</option>
+                        <option value="InProgress">Выполняется</option>
+                        <option value="Paused">На паузе</option>
+                        <option value="Completed">Завершено</option>
+                        <option value="Cancelled">Отменено</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Приоритет</label>
+                    <select class="form-select" name="MinPriority">
+                        <option value="">Любой</option>
+                        <option value="Low">Низкий и выше</option>
+                        <option value="Normal">Обычный и выше</option>
+                        <option value="High">Высокий и выше</option>
+                        <option value="Critical">Только критический</option>
+                    </select>
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">Найти</button>
+                </div>
+            </form>
+
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="ShowSetupsOnly"
+                               checked="@Model.Filter.ShowSetupsOnly">
+                        <label class="form-check-label">Только переналадки</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="ShowOverdueOnly"
+                               checked="@Model.Filter.ShowOverdueOnly">
+                        <label class="form-check-label">Только просроченные</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="ShowCriticalOnly"
+                               checked="@Model.Filter.ShowCriticalOnly">
+                        <label class="form-check-label">Только критические</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Список этапов -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.StageExecutions.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>
+                                <input type="checkbox" id="selectAll" onchange="toggleAll(this)">
+                            </th>
+                            <th>Деталь</th>
+                            <th>Этап</th>
+                            <th>Станок</th>
+                            <th>Статус</th>
+                            <th>Приоритет</th>
+                            <th>Плановое время</th>
+                            <th>Прогресс</th>
+                            <th>Оператор</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stage in Model.StageExecutions)
+                        {
+                            <tr class="@(stage.IsOverdue ? "table-warning" : "") @(stage.IsCritical ? "table-danger" : "")">
+                                <td>
+                                    <input type="checkbox" class="stage-select" value="@stage.Id">
+                                </td>
+                                <td>
+                                    <strong>@stage.DetailName</strong>
+                                    <br><small class="text-muted">@stage.DetailNumber</small>
+                                    @if (stage.IsSetup)
+                                    {
+                                        <br>
+
+                                        <span class="badge bg-info">Переналадка</span>
+                                    }
+                                </td>
+                                <td>@stage.StageName</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(stage.MachineName))
+                                    {
+                                        @stage.MachineName
+                                        <br>
+
+                                        <small class="text-muted">@stage.MachineTypeName</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Не назначен</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-@stage.StatusBadgeClass">
+                                        @stage.StatusDisplayName
+                                    </span>
+                                    @if (stage.QueuePosition.HasValue)
+                                    {
+                                        <br>
+
+                                        <small class="text-muted">Позиция: @stage.QueuePosition</small>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-@stage.PriorityBadgeClass">
+                                        @stage.PriorityDisplayName
+                                    </span>
+                                    @if (stage.IsCritical)
+                                    {
+                                        <br>
+
+                                        <small class="text-danger">КРИТИЧЕСКИЙ</small>
+                                    }
+                                </td>
+                                <td>
+                                    @if (stage.PlannedStartTimeUtc.HasValue)
+                                    {
+                                        @stage.PlannedStartTimeUtc.Value.ToString("dd.MM HH:mm")
+                                        <br>
+
+                                        <small class="text-muted">@stage.PlannedDurationHours.ToString("F1")ч</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Не запланировано</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (stage.CompletionPercentage.HasValue)
+                                    {
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar" style="width: @stage.CompletionPercentage%">
+                                                @stage.CompletionPercentage%
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(stage.OperatorId))
+                                    {
+                                        @stage.OperatorId
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" onclick="viewStage(@stage.Id)">Подробнее</a></li>
+                                            @if (stage.CanStart)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-success" onclick="startStage(@stage.Id)">
+                                                        <i class="bi bi-play"></i> Запустить
+                                                    </a>
+                                                </li>
+                                            }
+                                            @if (stage.CanPause)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-warning" onclick="pauseStage(@stage.Id)">
+                                                        <i class="bi bi-pause"></i> Приостановить
+                                                    </a>
+                                                </li>
+                                            }
+                                            @if (stage.CanResume)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-primary" onclick="resumeStage(@stage.Id)">
+                                                        <i class="bi bi-play"></i> Возобновить
+                                                    </a>
+                                                </li>
+                                            }
+                                            @if (stage.CanComplete)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-success" onclick="completeStage(@stage.Id)">
+                                                        <i class="bi bi-check"></i> Завершить
+                                                    </a>
+                                                </li>
+                                            }
+                                            @if (stage.CanReassign)
+                                            {
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <a class="dropdown-item" onclick="reassignStage(@stage.Id)">
+                                                        <i class="bi bi-arrow-right"></i> Переназначить
+                                                    </a>
+                                                </li>
+                                            }
+                                            @if (stage.CanCancel)
+                                            {
+                                                <li>
+                                                    <a class="dropdown-item text-danger" onclick="cancelStage(@stage.Id)">
+                                                        <i class="bi bi-x"></i> Отменить
+                                                    </a>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Пагинация -->
+            @if (Model.Pagination.TotalPages > 1)
+            {
+                <nav class="mt-3">
+                    <ul class="pagination">
+                        @if (Model.Pagination.HasPreviousPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage - 1)">Предыдущая</a>
+                            </li>
+                        }
+                        @for (int i = Math.Max(1, Model.Pagination.CurrentPage - 2);
+                       i <= Math.Min(Model.Pagination.TotalPages, Model.Pagination.CurrentPage + 2);
+                       i++)
+                        {
+                            <li class="page-item @(i == Model.Pagination.CurrentPage ? "active" : "")">
+                                <a class="page-link" href="?page=@i">@i</a>
+                            </li>
+                        }
+                        @if (Model.Pagination.HasNextPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage + 1)">Следующая</a>
+                            </li>
+                        }
+                    </ul>
+                </nav>
+            }
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-list-check display-1 text-muted"></i>
+                <h4>Этапы не найдены</h4>
+                <p class="text-muted">Измените фильтры поиска</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно массовых операций -->
+<div class="modal fade" id="bulkActionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Массовые операции</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Действие</label>
+                    <select class="form-select" id="bulkActionType">
+                        <option value="">Выберите действие...</option>
+                        <option value="start">Запустить</option>
+                        <option value="pause">Приостановить</option>
+                        <option value="resume">Возобновить</option>
+                        <option value="complete">Завершить</option>
+                        <option value="cancel">Отменить</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Причина/Комментарий</label>
+                    <textarea class="form-control" id="bulkActionReason" rows="3"></textarea>
+                </div>
+                <div class="alert alert-info">
+                    <span id="selectedCount">0</span> этапов выбрано
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="executeBulkAction()">Выполнить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function toggleAll(checkbox) {
+            const checkboxes = document.querySelectorAll('.stage-select');
+            checkboxes.forEach(cb => cb.checked = checkbox.checked);
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const selected = document.querySelectorAll('.stage-select:checked').length;
+            const countElement = document.getElementById('selectedCount');
+            if (countElement) {
+                countElement.textContent = selected;
+            }
+        }
+
+        // Обновление счетчика при изменении чекбоксов
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('stage-select')) {
+                updateSelectedCount();
+            }
+        });
+
+        function viewStage(id) {
+            window.open(`@Url.Action("Details")/${id}`, '_blank');
+        }
+
+        function startStage(id) {
+            executeStageAction(id, 'start', 'Запуск этапа...');
+        }
+
+        function pauseStage(id) {
+            const reason = prompt('Причина приостановки:');
+            if (reason !== null) {
+                executeStageAction(id, 'pause', 'Приостановка этапа...', reason);
+            }
+        }
+
+        function resumeStage(id) {
+            executeStageAction(id, 'resume', 'Возобновление этапа...');
+        }
+
+        function completeStage(id) {
+            if (confirm('Завершить этап?')) {
+                executeStageAction(id, 'complete', 'Завершение этапа...');
+            }
+        }
+
+        function cancelStage(id) {
+            const reason = prompt('Причина отмены:');
+            if (reason) {
+                executeStageAction(id, 'cancel', 'Отмена этапа...', reason);
+            }
+        }
+
+        function reassignStage(id) {
+            // Здесь должно открываться модальное окно для выбора станка
+            alert('Функция переназначения в разработке');
+        }
+
+        function executeStageAction(id, action, loadingText, reason = null) {
+            fetch('@Url.Action("ManageStage")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stageId: id,
+                    action: action,
+                    reason: reason
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Ошибка выполнения операции');
+            });
+        }
+
+        function bulkAction() {
+            const selected = document.querySelectorAll('.stage-select:checked');
+            if (selected.length === 0) {
+                alert('Выберите этапы для выполнения операций');
+                return;
+            }
+            updateSelectedCount();
+            $('#bulkActionModal').modal('show');
+        }
+
+        function executeBulkAction() {
+            const actionType = document.getElementById('bulkActionType').value;
+            const reason = document.getElementById('bulkActionReason').value;
+            const selected = Array.from(document.querySelectorAll('.stage-select:checked')).map(cb => parseInt(cb.value));
+
+            if (!actionType) {
+                alert('Выберите действие');
+                return;
+            }
+
+            if (confirm(`Выполнить действие "${actionType}" для ${selected.length} этапов?`)) {
+                fetch('@Url.Action("BulkAction")', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stageIds: selected,
+                        action: actionType,
+                        reason: reason
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        $('#bulkActionModal').modal('hide');
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Ошибка выполнения массовых операций');
+                });
+            }
+        }
+
+        // Автоматическая отправка формы при изменении чекбоксов фильтров
+        document.querySelectorAll('input[type="checkbox"][name^="Show"]').forEach(cb => {
+            cb.addEventListener('change', function() {
+                this.closest('form').submit();
+            });
+        });
+
+        // Автообновление каждые 15 секунд
+        setInterval(() => {
+            if (!document.hidden) {
+                location.reload();
+            }
+        }, 15000);
+    </script>
+}

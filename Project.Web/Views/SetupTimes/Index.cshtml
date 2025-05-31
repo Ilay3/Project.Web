@@ -1,0 +1,479 @@
+﻿@model SetupTimesIndexViewModel
+@{
+    ViewData["Title"] = "Управление временами переналадки";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-stopwatch"></i> Управление временами переналадки
+    </h1>
+    <div>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createSetupTimeModal">
+            <i class="bi bi-plus"></i> Добавить время
+        </button>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkImportModal">
+            <i class="bi bi-upload"></i> Массовый импорт
+        </button>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#checkSetupModal">
+            <i class="bi bi-search"></i> Проверить переналадку
+        </button>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Станок</label>
+                <select class="form-select" name="MachineId">
+                    <option value="">Все станки</option>
+                    @foreach (var machine in Model.Filter.AvailableMachines)
+                    {
+                        <option value="@machine.Id" selected="@(Model.Filter.MachineId == machine.Id)">
+                            @machine.Name
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Деталь "откуда"</label>
+                <select class="form-select" name="FromDetailId">
+                    <option value="">Все детали</option>
+                    @foreach (var detail in Model.Filter.AvailableDetails)
+                    {
+                        <option value="@detail.Id" selected="@(Model.Filter.FromDetailId == detail.Id)">
+                            @detail.Name
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Деталь "куда"</label>
+                <select class="form-select" name="ToDetailId">
+                    <option value="">Все детали</option>
+                    @foreach (var detail in Model.Filter.AvailableDetails)
+                    {
+                        <option value="@detail.Id" selected="@(Model.Filter.ToDetailId == detail.Id)">
+                            @detail.Name
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Мин. время (ч)</label>
+                <input type="number" class="form-control" name="MinTime" step="0.1"
+                       value="@Model.Filter.MinTime">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Макс. время (ч)</label>
+                <input type="number" class="form-control" name="MaxTime" step="0.1"
+                       value="@Model.Filter.MaxTime">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Найти</button>
+            </div>
+        </form>
+
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="ShowOnlyUsed"
+                           checked="@Model.Filter.ShowOnlyUsed">
+                    <label class="form-check-label">Показывать только используемые</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Список времен переналадки -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.SetupTimes.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Станок</th>
+                            <th>Деталь "откуда"</th>
+                            <th>Деталь "куда"</th>
+                            <th>Время переналадки</th>
+                            <th>Количество использований</th>
+                            <th>Среднее фактическое время</th>
+                            <th>Последнее использование</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var setupTime in Model.SetupTimes)
+                        {
+                            <tr>
+                                <td>@setupTime.MachineName</td>
+                                <td>
+                                    <strong>@setupTime.FromDetailName</strong><br>
+                                    <small class="text-muted">@setupTime.FromDetailNumber</small>
+                                </td>
+                                <td>
+                                    <strong>@setupTime.ToDetailName</strong><br>
+                                    <small class="text-muted">@setupTime.ToDetailNumber</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">@setupTime.TimeDisplayText</span>
+                                </td>
+                                <td>
+                                    @if (setupTime.UsageCount > 0)
+                                    {
+                                        <span class="badge bg-success">@setupTime.UsageCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">0</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (setupTime.AverageActualTime.HasValue)
+                                    {
+                                        @setupTime.AverageActualTime.Value.ToString("F2") <text>ч</text>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (setupTime.LastUsedUtc.HasValue)
+                                    {
+                                        @setupTime.LastUsedUtc.Value.ToString("dd.MM.yyyy")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Никогда</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" onclick="editSetupTime(@setupTime.Id)">Редактировать</a></li>
+                                            <li><a class="dropdown-item" onclick="copySetupTime(@setupTime.Id)">Копировать</a></li>
+                                            <li><a class="dropdown-item" onclick="viewHistory(@setupTime.Id)">История использования</a></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><a class="dropdown-item text-danger" onclick="deleteSetupTime(@setupTime.Id)">Удалить</a></li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Пагинация -->
+            @if (Model.Pagination.TotalPages > 1)
+            {
+                <nav class="mt-3">
+                    <ul class="pagination">
+                        @if (Model.Pagination.HasPreviousPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage - 1)">Предыдущая</a>
+                            </li>
+                        }
+                        @for (int i = Math.Max(1, Model.Pagination.CurrentPage - 2);
+                       i <= Math.Min(Model.Pagination.TotalPages, Model.Pagination.CurrentPage + 2);
+                       i++)
+                        {
+                            <li class="page-item @(i == Model.Pagination.CurrentPage ? "active" : "")">
+                                <a class="page-link" href="?page=@i">@i</a>
+                            </li>
+                        }
+                        @if (Model.Pagination.HasNextPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage + 1)">Следующая</a>
+                            </li>
+                        }
+                    </ul>
+                </nav>
+            }
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-stopwatch display-1 text-muted"></i>
+                <h4>Времена переналадки не найдены</h4>
+                <p class="text-muted">Добавьте время переналадки или измените фильтры</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно создания времени переналадки -->
+<div class="modal fade" id="createSetupTimeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить время переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createSetupTimeForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Станок *</label>
+                        <select class="form-select" name="MachineId" required>
+                            <option value="">Выберите станок...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Деталь "откуда" *</label>
+                        <select class="form-select" name="FromDetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Деталь "куда" *</label>
+                        <select class="form-select" name="ToDetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Время переналадки (часы) *</label>
+                        <input type="number" class="form-control" name="Time" step="0.1" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание операций переналадки</label>
+                        <textarea class="form-control" name="SetupDescription" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Требуемая квалификация</label>
+                        <input type="text" class="form-control" name="RequiredSkills">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Необходимые инструменты</label>
+                        <input type="text" class="form-control" name="RequiredTools">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно массового импорта -->
+<div class="modal fade" id="bulkImportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Массовый импорт времен переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="bulkImportForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">CSV файл</label>
+                        <input type="file" class="form-control" name="CsvFile" accept=".csv">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Или введите данные в формате CSV</label>
+                        <textarea class="form-control" name="CsvData" rows="10"
+                                  placeholder="Станок,Деталь_Откуда,Деталь_Куда,Время_Часы,Описание"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="OverwriteExisting">
+                        <label class="form-check-label">Перезаписать существующие записи</label>
+                    </div>
+                    <div class="alert alert-info mt-3">
+                        <strong>Формат CSV:</strong><br>
+                        Станок,Деталь_Откуда,Деталь_Куда,Время_Часы,Описание<br>
+                        Станок-1,Деталь-А,Деталь-Б,0.5,Смена оснастки
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Импортировать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно проверки переналадки -->
+<div class="modal fade" id="checkSetupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Проверить необходимость переналадки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="checkSetupForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Станок</label>
+                        <select class="form-select" name="MachineId" required>
+                            <option value="">Выберите станок...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Деталь для изготовления</label>
+                        <select class="form-select" name="DetailId" required>
+                            <option value="">Выберите деталь...</option>
+                        </select>
+                    </div>
+                    <div id="setupCheckResult" style="display: none;">
+                        <hr>
+                        <div class="alert" id="setupResultAlert">
+                            <h6 id="setupResultTitle"></h6>
+                            <div id="setupResultDetails"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="submit" class="btn btn-primary">Проверить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function editSetupTime(id) {
+            window.location.href = `@Url.Action("Edit")/${id}`;
+        }
+
+        function copySetupTime(id) {
+            // Логика копирования времени переналадки
+            alert('Функция копирования в разработке');
+        }
+
+        function viewHistory(id) {
+            window.open(`@Url.Action("GetSetupHistory")/${id}`, '_blank');
+        }
+
+        function deleteSetupTime(id) {
+            if (confirm('Удалить время переналадки?')) {
+                fetch(`@Url.Action("Delete")/${id}`, {
+                    method: 'POST'
+                }).then(() => location.reload());
+            }
+        }
+
+        // Создание времени переналадки
+        document.getElementById('createSetupTimeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('@Url.Action("Create")', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    location.reload();
+                }
+            });
+        });
+
+        // Массовый импорт
+        document.getElementById('bulkImportForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('@Url.Action("BulkImport")', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Импорт завершен: ${data.successCount} записей добавлено`);
+                    location.reload();
+                } else {
+                    alert('Ошибка импорта: ' + data.message);
+                }
+            });
+        });
+
+        // Проверка переналадки
+        document.getElementById('checkSetupForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            fetch('@Url.Action("CheckSetup")', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('setupCheckResult');
+                const alert = document.getElementById('setupResultAlert');
+                const title = document.getElementById('setupResultTitle');
+                const details = document.getElementById('setupResultDetails');
+
+                if (data.setupNeeded) {
+                    alert.className = 'alert alert-warning';
+                    title.textContent = 'Требуется переналадка';
+                    details.innerHTML = `
+                        <p><strong>Текущая деталь:</strong> ${data.fromDetailName}</p>
+                        <p><strong>Новая деталь:</strong> ${data.toDetailName}</p>
+                        <p><strong>Время переналадки:</strong> ${data.setupTime} ч</p>
+                    `;
+                } else {
+                    alert.className = 'alert alert-success';
+                    title.textContent = 'Переналадка не требуется';
+                    details.innerHTML = '<p>Станок готов к изготовлению данной детали.</p>';
+                }
+
+                resultDiv.style.display = 'block';
+            });
+        });
+
+        // Загрузка данных для модальных окон
+        function loadModalData() {
+            // Загрузка станков
+            fetch('@Url.Action("Search", "Machines")?term=')
+                .then(response => response.json())
+                .then(data => {
+                    const selects = document.querySelectorAll('select[name="MachineId"]');
+                    selects.forEach(select => {
+                        select.innerHTML = '<option value="">Выберите станок...</option>';
+                        data.forEach(machine => {
+                            const option = document.createElement('option');
+                            option.value = machine.id;
+                            option.textContent = machine.text;
+                            select.appendChild(option);
+                        });
+                    });
+                });
+
+            // Загрузка деталей
+            fetch('@Url.Action("Search", "Details")?term=')
+                .then(response => response.json())
+                .then(data => {
+                    const selects = document.querySelectorAll('select[name="FromDetailId"], select[name="ToDetailId"], select[name="DetailId"]');
+                    selects.forEach(select => {
+                        const placeholder = select.name === 'DetailId' ? 'Выберите деталь...' : 'Выберите деталь...';
+                        select.innerHTML = `<option value="">${placeholder}</option>`;
+                        data.forEach(detail => {
+                            const option = document.createElement('option');
+                            option.value = detail.id;
+                            option.textContent = detail.text;
+                            select.appendChild(option);
+                        });
+                    });
+                });
+        }
+
+        // Загрузка данных при открытии модальных окон
+        document.getElementById('createSetupTimeModal').addEventListener('show.bs.modal', loadModalData);
+        document.getElementById('checkSetupModal').addEventListener('show.bs.modal', loadModalData);
+
+        // Автоматическая отправка формы при изменении чекбокса
+        document.querySelector('input[name="ShowOnlyUsed"]').addEventListener('change', function() {
+            this.closest('form').submit();
+        });
+    </script>
+}

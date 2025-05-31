@@ -1,0 +1,331 @@
+﻿@model HistoryIndexViewModel
+@{
+    ViewData["Title"] = "История выполнения этапов";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="bi bi-clock-history"></i> История выполнения этапов
+    </h1>
+    <div>
+        <button class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+            <i class="bi bi-funnel"></i> Фильтры
+        </button>
+        <button class="btn btn-success" onclick="exportHistory()">
+            <i class="bi bi-download"></i> Экспорт
+        </button>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">Всего этапов</h5>
+                <h3 class="text-primary">@Model.Statistics.TotalStages</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">Завершено</h5>
+                <h3 class="text-success">@Model.Statistics.CompletedStages</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">Эффективность</h5>
+                <h3 class="@Model.Statistics.EfficiencyCssClass">@Model.Statistics.EfficiencyPercentage%</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">Просрочено</h5>
+                <h3 class="text-danger">@Model.Statistics.OverdueStages</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Панель фильтров -->
+<div class="collapse" id="filterPanel">
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label">Дата начала</label>
+                    <input type="date" class="form-control" name="StartDate"
+                           value="@Model.Filter.StartDate?.ToString("yyyy-MM-dd")">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Дата окончания</label>
+                    <input type="date" class="form-control" name="EndDate"
+                           value="@Model.Filter.EndDate?.ToString("yyyy-MM-dd")">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Станок</label>
+                    <select class="form-select" name="MachineId">
+                        <option value="">Все станки</option>
+                        @foreach (var machine in Model.Filter.AvailableMachines)
+                        {
+                            <option value="@machine.Id" selected="@(Model.Filter.MachineId == machine.Id)">
+                                @machine.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Деталь</label>
+                    <select class="form-select" name="DetailId">
+                        <option value="">Все детали</option>
+                        @foreach (var detail in Model.Filter.AvailableDetails)
+                        {
+                            <option value="@detail.Id" selected="@(Model.Filter.DetailId == detail.Id)">
+                                @detail.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Оператор</label>
+                    <select class="form-select" name="OperatorId">
+                        <option value="">Все операторы</option>
+                        @foreach (var op in Model.Filter.AvailableOperators)
+                        {
+                            <option value="@op.Id" selected="@(Model.Filter.OperatorId == op.Name)">
+                                @op.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">Применить</button>
+                </div>
+            </form>
+
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="IncludeSetups"
+                               checked="@Model.Filter.IncludeSetups">
+                        <label class="form-check-label">Включать переналадки</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="IsOverdueOnly"
+                               checked="@Model.Filter.IsOverdueOnly">
+                        <label class="form-check-label">Только просроченные</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Список истории -->
+<div class="card">
+    <div class="card-body">
+        @if (Model.HistoryItems.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Дата/время</th>
+                            <th>Деталь</th>
+                            <th>Этап</th>
+                            <th>Станок</th>
+                            <th>Статус</th>
+                            <th>Оператор</th>
+                            <th>Длительность</th>
+                            <th>Отклонение</th>
+                            <th>Количество</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.HistoryItems)
+                        {
+                            <tr class="@(item.IsOverdue ? "table-warning" : "")">
+                                <td>
+                                    @item.StatusChangedTimeUtc.ToString("dd.MM.yyyy HH:mm")
+                                    @if (item.IsSetup)
+                                    {
+                                        <br>
+
+                                        <small class="badge bg-info">Переналадка</small>
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@item.DetailName</strong><br>
+                                    <small class="text-muted">@item.DetailNumber</small>
+                                </td>
+                                <td>@item.StageName</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(item.MachineName))
+                                    {
+                                        @item.MachineName
+                                        <br>
+
+                                        <small class="text-muted">@item.MachineTypeName</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-@item.StatusBadgeClass">
+                                        @item.StatusDisplayName
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(item.OperatorId))
+                                    {
+                                        @item.OperatorId
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @item.DurationDisplayText
+                                    <br><small class="text-muted">План: @item.PlannedDurationHours.ToString("F1")ч</small>
+                                </td>
+                                <td class="@item.DeviationCssClass">
+                                    @item.DeviationDisplayText
+                                </td>
+                                <td>@item.Quantity шт</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewDetails(@item.Id)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Пагинация -->
+            @if (Model.Pagination.TotalPages > 1)
+            {
+                <nav class="mt-3">
+                    <ul class="pagination">
+                        @if (Model.Pagination.HasPreviousPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage - 1)">Предыдущая</a>
+                            </li>
+                        }
+                        @for (int i = Math.Max(1, Model.Pagination.CurrentPage - 2);
+                       i <= Math.Min(Model.Pagination.TotalPages, Model.Pagination.CurrentPage + 2);
+                       i++)
+                        {
+                            <li class="page-item @(i == Model.Pagination.CurrentPage ? "active" : "")">
+                                <a class="page-link" href="?page=@i">@i</a>
+                            </li>
+                        }
+                        @if (Model.Pagination.HasNextPage)
+                        {
+                            <li class="page-item">
+                                <a class="page-link" href="?page=@(Model.Pagination.CurrentPage + 1)">Следующая</a>
+                            </li>
+                        }
+                    </ul>
+                </nav>
+            }
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="bi bi-clock-history display-1 text-muted"></i>
+                <h4>История не найдена</h4>
+                <p class="text-muted">Измените фильтры или период поиска</p>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Модальное окно экспорта -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Экспорт истории</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="exportForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Формат экспорта</label>
+                        <select class="form-select" name="format">
+                            <option value="CSV">CSV</option>
+                            <option value="EXCEL">Excel</option>
+                            <option value="JSON">JSON</option>
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="includeDetails" checked>
+                        <label class="form-check-label">Включить подробности</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Экспортировать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function viewDetails(id) {
+            window.open(`@Url.Action("Details")/${id}`, '_blank');
+        }
+
+        function exportHistory() {
+            $('#exportModal').modal('show');
+        }
+
+        document.getElementById('exportForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+
+            // Добавляем текущие фильтры
+            const urlParams = new URLSearchParams(window.location.search);
+            for (const [key, value] of urlParams) {
+                formData.append(key, value);
+            }
+
+            fetch('@Url.Action("Export")', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `history_${new Date().toISOString().slice(0,10)}.${formData.get('format').toLowerCase()}`;
+                a.click();
+                $('#exportModal').modal('hide');
+            });
+        });
+
+        // Автоматическая отправка формы при изменении чекбоксов
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.closest('form')) {
+                    this.closest('form').submit();
+                }
+            });
+        });
+    </script>
+}
