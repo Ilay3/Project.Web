@@ -1,0 +1,20 @@
+﻿@model HistoryDetailsViewModel
+@{
+    ViewData["Title"] = "История этапа";
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">@Model.HistoryItem.DetailName - @Model.HistoryItem.StageName</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Статус:</dt>
+            <dd class="col-sm-9"><span class="badge bg-success">@Model.HistoryItem.Status</span></dd>
+            <dt class="col-sm-3">Дата:</dt>
+            <dd class="col-sm-9">@Model.HistoryItem.CreatedUtc.ToString("dd.MM.yyyy HH:mm")</dd>
+        </dl>
+    </div>
+</div>

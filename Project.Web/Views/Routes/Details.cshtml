@@ -1,0 +1,22 @@
+﻿@model RouteDetailsViewModel
+@{
+    ViewData["Title"] = "Маршрут - " + Model.DetailName;
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">@Model.DetailName</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <div class="card-header">Этапы маршрута (@Model.StageCount)</div>
+    <div class="card-body">
+        @foreach (var stage in Model.Stages.OrderBy(s => s.Order))
+        {
+            <div class="border p-3 mb-2">
+                <strong>@stage.Order. @stage.Name</strong><br>
+                <small>@stage.MachineTypeName - @stage.NormTime ч</small>
+            </div>
+        }
+    </div>
+</div>

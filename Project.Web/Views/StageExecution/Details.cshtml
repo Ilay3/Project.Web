@@ -1,0 +1,20 @@
+﻿@model StageExecutionDetailsViewModel
+@{
+    ViewData["Title"] = "Этап - " + Model.StageName;
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">@Model.DetailName - @Model.StageName</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Статус:</dt>
+            <dd class="col-sm-9"><span class="badge bg-primary">@Model.Status</span></dd>
+            <dt class="col-sm-3">Создан:</dt>
+            <dd class="col-sm-9">@Model.CreatedUtc.ToString("dd.MM.yyyy HH:mm")</dd>
+        </dl>
+    </div>
+</div>

@@ -2,7 +2,7 @@
 @{
     ViewData["Title"] = "Управление временами переналадки";
 }
-
+@Html.AntiForgeryToken()
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3">
         <i class="bi bi-stopwatch"></i> Управление временами переналадки
@@ -24,6 +24,8 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-3">
+            @Html.AntiForgeryToken()
+
             <div class="col-md-2">
                 <label class="form-label">Станок</label>
                 <select class="form-select" name="MachineId">
@@ -221,6 +223,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="createSetupTimeForm">
+                @Html.AntiForgeryToken()
+
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Станок *</label>
@@ -275,6 +279,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="bulkImportForm">
+                @Html.AntiForgeryToken()
+
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">CSV файл</label>
@@ -313,6 +319,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="checkSetupForm">
+                @Html.AntiForgeryToken()
+
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Станок</label>

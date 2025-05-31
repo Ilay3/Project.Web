@@ -1,0 +1,31 @@
+﻿@model PlanningQueueViewModel
+@{
+    ViewData["Title"] = "Очередь планирования";
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">Очередь планирования</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        @if (Model.QueuedStages.Any())
+        {
+            @foreach (var stage in Model.QueuedStages)
+            {
+                <div class="d-flex justify-content-between align-items-center border p-3 mb-2">
+                    <div>
+                        <strong>#@stage.QueuePosition @stage.DetailName</strong><br>
+                        <small>@stage.StageName - @stage.MachineName</small>
+                    </div>
+                    <span class="badge bg-primary">@stage.Priority</span>
+                </div>
+            }
+        }
+        else
+        {
+            <p class="text-center text-muted">Очередь пуста</p>
+        }
+    </div>
+</div>

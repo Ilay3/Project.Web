@@ -1,0 +1,27 @@
+﻿@model DetailDetailsViewModel
+@{
+    ViewData["Title"] = "Деталь - " + Model.Name;
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">@Model.Name</h1>
+    <div>
+        <a href="@Url.Action("Edit", new {id = Model.Id})" class="btn btn-primary">Редактировать</a>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Номер:</dt>
+            <dd class="col-sm-9">@Model.Number</dd>
+            <dt class="col-sm-3">Название:</dt>
+            <dd class="col-sm-9">@Model.Name</dd>
+            <dt class="col-sm-3">Маршрут:</dt>
+            <dd class="col-sm-9">@(Model.HasRoute ? $"{Model.RouteStageCount} этапов" : "Нет")</dd>
+            <dt class="col-sm-3">Изготовлено всего:</dt>
+            <dd class="col-sm-9">@Model.TotalManufactured шт</dd>
+        </dl>
+    </div>
+</div>

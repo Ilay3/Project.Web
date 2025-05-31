@@ -213,7 +213,7 @@
         }
     </style>
 }
-
+@Html.AntiForgeryToken()
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
         <i class="bi bi-bar-chart-steps text-primary"></i>
@@ -236,6 +236,8 @@
 <div class="collapse" id="filterPanel">
     <div class="filter-panel">
         <form method="get" class="row g-3">
+            @Html.AntiForgeryToken()
+
             <div class="col-md-2">
                 <label class="form-label">Дата начала</label>
                 <input type="date" class="form-control form-control-sm" name="StartDate" 

@@ -1,0 +1,27 @@
+﻿@model MachineTypeDetailsViewModel
+@{
+    ViewData["Title"] = "Тип станка - " + Model.Name;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">@Model.Name</h1>
+    <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Название:</dt>
+            <dd class="col-sm-9">@Model.Name</dd>
+
+            <dt class="col-sm-3">Количество станков:</dt>
+            <dd class="col-sm-9">@Model.MachineCount</dd>
+
+            <dt class="col-sm-3">Активных станков:</dt>
+            <dd class="col-sm-9">@Model.ActiveMachineCount</dd>
+
+            <dt class="col-sm-3">Создан:</dt>
+            <dd class="col-sm-9">@Model.CreatedUtc.ToString("dd.MM.yyyy")</dd>
+        </dl>
+    </div>
+</div>

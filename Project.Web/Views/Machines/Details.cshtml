@@ -1,0 +1,29 @@
+﻿@model MachineDto
+@{
+    ViewData["Title"] = "Станок - " + Model.Name;
+}
+
+<div class="d-flex justify-content-between mb-4">
+    <h1 class="h3">@Model.Name</h1>
+    <div>
+        <a href="@Url.Action("Edit", new {id = Model.Id})" class="btn btn-primary">Редактировать</a>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">Назад</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Название:</dt>
+            <dd class="col-sm-9">@Model.Name</dd>
+            <dt class="col-sm-3">Инвентарный номер:</dt>
+            <dd class="col-sm-9">@Model.InventoryNumber</dd>
+            <dt class="col-sm-3">Тип:</dt>
+            <dd class="col-sm-9">@Model.MachineTypeName</dd>
+            <dt class="col-sm-3">Статус:</dt>
+            <dd class="col-sm-9"><span class="badge bg-primary">@Model.Status</span></dd>
+            <dt class="col-sm-3">Приоритет:</dt>
+            <dd class="col-sm-9">@Model.Priority</dd>
+        </dl>
+    </div>
+</div>
