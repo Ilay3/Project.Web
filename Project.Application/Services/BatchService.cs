@@ -14,51 +14,24 @@ namespace Project.Application.Services
         private readonly IBatchRepository _batchRepo;
         private readonly IDetailRepository _detailRepo;
         private readonly IRouteRepository _routeRepo;
-        private readonly StageExecutionService _stageService;
         private readonly ILogger<BatchService> _logger;
 
         public BatchService(
             IBatchRepository batchRepo,
             IDetailRepository detailRepo,
             IRouteRepository routeRepo,
-            StageExecutionService stageService,
             ILogger<BatchService> logger)
         {
             _batchRepo = batchRepo;
             _detailRepo = detailRepo;
             _routeRepo = routeRepo;
-            _stageService = stageService;
             _logger = logger;
         }
 
         public async Task<List<BatchDto>> GetAllAsync()
         {
             var batches = await _batchRepo.GetAllAsync();
-            return batches.Select(b => new BatchDto
-            {
-                Id = b.Id,
-                DetailId = b.DetailId,
-                DetailName = b.Detail?.Name ?? "",
-                Quantity = b.Quantity,
-                CreatedUtc = b.CreatedUtc,
-                SubBatches = b.SubBatches?.Select(sb => new SubBatchDto
-                {
-                    Id = sb.Id,
-                    Quantity = sb.Quantity,
-                    StageExecutions = sb.StageExecutions?.Select(se => new StageExecutionDto
-                    {
-                        Id = se.Id,
-                        RouteStageId = se.RouteStageId,
-                        StageName = se.RouteStage?.Name ?? "",
-                        MachineId = se.MachineId,
-                        MachineName = se.Machine?.Name,
-                        Status = se.Status.ToString(),
-                        StartTimeUtc = se.StartTimeUtc,
-                        EndTimeUtc = se.EndTimeUtc,
-                        IsSetup = se.IsSetup
-                    }).ToList() ?? new List<StageExecutionDto>()
-                }).ToList() ?? new List<SubBatchDto>()
-            }).ToList();
+            return batches.Select(b => MapToBatchDto(b)).ToList();
         }
 
         public async Task<BatchDto> GetByIdAsync(int id)
@@ -67,35 +40,11 @@ namespace Project.Application.Services
             if (batch == null)
                 throw new Exception($"Batch with id {id} not found");
 
-            return new BatchDto
-            {
-                Id = batch.Id,
-                DetailId = batch.DetailId,
-                DetailName = batch.Detail?.Name ?? "",
-                Quantity = batch.Quantity,
-                CreatedUtc = batch.CreatedUtc,
-                SubBatches = batch.SubBatches?.Select(sb => new SubBatchDto
-                {
-                    Id = sb.Id,
-                    Quantity = sb.Quantity,
-                    StageExecutions = sb.StageExecutions?.Select(se => new StageExecutionDto
-                    {
-                        Id = se.Id,
-                        RouteStageId = se.RouteStageId,
-                        StageName = se.RouteStage?.Name ?? "",
-                        MachineId = se.MachineId,
-                        MachineName = se.Machine?.Name,
-                        Status = se.Status.ToString(),
-                        StartTimeUtc = se.StartTimeUtc,
-                        EndTimeUtc = se.EndTimeUtc,
-                        IsSetup = se.IsSetup
-                    }).ToList() ?? new List<StageExecutionDto>()
-                }).ToList() ?? new List<SubBatchDto>()
-            };
+            return MapToBatchDto(batch);
         }
 
         /// <summary>
-        /// ИСПРАВЛЕННОЕ создание партии с валидацией
+        /// Создание партии с валидацией согласно ТЗ
         /// </summary>
         public async Task<int> CreateAsync(BatchCreateDto dto)
         {
@@ -126,7 +75,7 @@ namespace Project.Application.Services
                     SubBatches = new List<SubBatch>()
                 };
 
-                // Создаем подпартии
+                // Создаем подпартии согласно ТЗ
                 if (dto.SubBatches == null || !dto.SubBatches.Any())
                 {
                     // Если подпартии не указаны, создаем одну на весь объем
@@ -156,6 +105,7 @@ namespace Project.Application.Services
                     }
                 }
 
+                // Сохраняем партию в БД
                 await _batchRepo.AddAsync(batch);
 
                 // Генерируем этапы маршрута для каждой подпартии
@@ -181,7 +131,7 @@ namespace Project.Application.Services
             var entity = await _batchRepo.GetByIdAsync(dto.Id);
             if (entity == null) throw new Exception("Batch not found");
 
-            // Проверяем, можно ли изменять партию
+            // Проверяем, можно ли изменять партию согласно ТЗ
             var hasStartedStages = entity.SubBatches.Any(sb =>
                 sb.StageExecutions.Any(se =>
                     se.Status == StageExecutionStatus.InProgress ||
@@ -193,7 +143,7 @@ namespace Project.Application.Services
 
             entity.Quantity = dto.Quantity;
 
-            // Для подпартий, которые еще не начали выполняться
+            // Обновляем подпартии, которые еще не начали выполняться
             foreach (var sbDto in dto.SubBatches ?? new List<SubBatchEditDto>())
             {
                 var subBatch = entity.SubBatches.FirstOrDefault(sb => sb.Id == sbDto.Id);
@@ -219,7 +169,7 @@ namespace Project.Application.Services
             var batch = await _batchRepo.GetByIdAsync(id);
             if (batch == null) throw new Exception("Batch not found");
 
-            // Проверяем, что ни один этап партии еще не начал выполняться
+            // Проверяем, что ни один этап партии еще не начал выполняться согласно ТЗ
             var canDelete = !batch.SubBatches.Any(sb =>
                 sb.StageExecutions.Any(se =>
                     se.Status == StageExecutionStatus.InProgress ||
@@ -233,7 +183,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// ИСПРАВЛЕННАЯ генерация этапов выполнения для подпартии на основе маршрута
+        /// Генерация этапов выполнения для подпартии на основе маршрута согласно ТЗ
         /// </summary>
         private async Task GenerateStageExecutionsForSubBatch(int subBatchId, Route route)
         {
@@ -254,7 +204,7 @@ namespace Project.Application.Services
                     {
                         SubBatchId = subBatchId,
                         RouteStageId = routeStage.Id,
-                        Status = StageExecutionStatus.Pending,
+                        Status = StageExecutionStatus.Pending, // Статус согласно ТЗ: "Ожидает запуска"
                         IsSetup = false, // это основной этап, не переналадка
                         StatusChangedTimeUtc = currentTime,
                         CreatedUtc = currentTime,
@@ -280,7 +230,9 @@ namespace Project.Application.Services
             }
         }
 
-        // Получение всех этапов выполнения для партии
+        /// <summary>
+        /// Получение всех этапов выполнения для партии
+        /// </summary>
         public async Task<List<StageExecutionDto>> GetStageExecutionsForBatchAsync(int batchId)
         {
             var batch = await _batchRepo.GetByIdAsync(batchId);
@@ -293,18 +245,7 @@ namespace Project.Application.Services
             {
                 foreach (var se in subBatch.StageExecutions.OrderBy(s => s.RouteStage.Order).ThenBy(s => s.IsSetup ? 0 : 1))
                 {
-                    result.Add(new StageExecutionDto
-                    {
-                        Id = se.Id,
-                        RouteStageId = se.RouteStageId,
-                        StageName = se.IsSetup ? $"Переналадка: {se.RouteStage?.Name}" : se.RouteStage?.Name ?? "",
-                        MachineId = se.MachineId,
-                        MachineName = se.Machine?.Name,
-                        Status = se.Status.ToString(),
-                        StartTimeUtc = se.StartTimeUtc,
-                        EndTimeUtc = se.EndTimeUtc,
-                        IsSetup = se.IsSetup
-                    });
+                    result.Add(MapToStageExecutionDto(se));
                 }
             }
 
@@ -312,7 +253,7 @@ namespace Project.Application.Services
         }
 
         /// <summary>
-        /// Получение детальной статистики по партии
+        /// Получение детальной статистики по партии согласно ТЗ
         /// </summary>
         public async Task<BatchStatisticsDto> GetBatchStatisticsAsync(int batchId)
         {
@@ -357,15 +298,225 @@ namespace Project.Application.Services
                 EstimatedCompletionTime = await _batchRepo.GetEstimatedCompletionTimeForBatchAsync(batchId)
             };
         }
+
+        #region Приватные методы маппинга
+
+        private BatchDto MapToBatchDto(Batch batch)
+        {
+            return new BatchDto
+            {
+                Id = batch.Id,
+                DetailId = batch.DetailId,
+                DetailName = batch.Detail?.Name ?? "",
+                DetailNumber = batch.Detail?.Number ?? "",
+                Quantity = batch.Quantity,
+                CreatedUtc = batch.CreatedUtc,
+                SubBatches = batch.SubBatches?.Select(sb => MapToSubBatchDto(sb)).ToList() ?? new List<SubBatchDto>(),
+                TotalPlannedTimeHours = CalculateTotalPlannedTime(batch),
+                TotalActualTimeHours = CalculateTotalActualTime(batch),
+                CompletionPercentage = CalculateCompletionPercentage(batch),
+                EstimatedCompletionTimeUtc = null, // Можно добавить расчет
+                StageStatistics = CalculateStageStatistics(batch),
+                CanEdit = CanEditBatch(batch),
+                CanDelete = CanDeleteBatch(batch)
+            };
+        }
+
+        private SubBatchDto MapToSubBatchDto(SubBatch subBatch)
+        {
+            return new SubBatchDto
+            {
+                Id = subBatch.Id,
+                BatchId = subBatch.BatchId,
+                Quantity = subBatch.Quantity,
+                StageExecutions = subBatch.StageExecutions?.Select(se => MapToStageExecutionDto(se)).ToList() ?? new List<StageExecutionDto>(),
+                CompletionPercentage = CalculateSubBatchCompletion(subBatch),
+                CurrentStageExecutionId = GetCurrentStageId(subBatch),
+                CurrentStageName = GetCurrentStageName(subBatch),
+                NextStageExecutionId = GetNextStageId(subBatch),
+                NextStageName = GetNextStageName(subBatch)
+            };
+        }
+
+        private StageExecutionDto MapToStageExecutionDto(StageExecution se)
+        {
+            return new StageExecutionDto
+            {
+                Id = se.Id,
+                SubBatchId = se.SubBatchId,
+                RouteStageId = se.RouteStageId,
+                StageName = se.IsSetup ? $"Переналадка: {se.RouteStage?.Name}" : se.RouteStage?.Name ?? "",
+                StageType = se.IsSetup ? "Setup" : "Operation",
+                MachineId = se.MachineId,
+                MachineName = se.Machine?.Name,
+                Status = MapStageExecutionStatus(se.Status),
+                IsSetup = se.IsSetup,
+                Priority = MapPriority(se.Priority),
+                IsCritical = se.IsCritical,
+                PlannedStartTimeUtc = se.PlannedStartTimeUtc,
+                PlannedEndTimeUtc = se.PlannedStartTimeUtc?.Add(se.PlannedDuration),
+                StartTimeUtc = se.StartTimeUtc,
+                EndTimeUtc = se.EndTimeUtc,
+                PauseTimeUtc = se.PauseTimeUtc,
+                ResumeTimeUtc = se.ResumeTimeUtc,
+                PlannedDurationHours = se.PlannedDuration.TotalHours,
+                ActualDurationHours = se.ActualWorkingTime?.TotalHours,
+                DeviationHours = se.TimeDeviation?.TotalHours,
+                CompletionPercentage = se.CompletionPercentage,
+                QueuePosition = se.QueuePosition,
+                Quantity = se.SubBatch?.Quantity ?? 0,
+                OperatorId = se.OperatorId,
+                ReasonNote = se.ReasonNote,
+                DeviceId = se.DeviceId,
+                CreatedUtc = se.CreatedUtc,
+                StatusChangedTimeUtc = se.StatusChangedTimeUtc,
+                IsOverdue = se.IsOverdue,
+                CanStart = se.CanStart,
+                DetailName = se.SubBatch?.Batch?.Detail?.Name ?? "",
+                BatchId = se.SubBatch?.BatchId ?? 0,
+                SetupStageId = se.SetupStageId,
+                MainStageId = se.MainStageId
+            };
+        }
+
+        // Вспомогательные методы расчета статистики
+        private double CalculateTotalPlannedTime(Batch batch)
+        {
+            return batch.SubBatches
+                .SelectMany(sb => sb.StageExecutions.Where(se => !se.IsSetup))
+                .Sum(se => se.PlannedDuration.TotalHours);
+        }
+
+        private double? CalculateTotalActualTime(Batch batch)
+        {
+            var actualTimes = batch.SubBatches
+                .SelectMany(sb => sb.StageExecutions)
+                .Where(se => se.ActualWorkingTime.HasValue)
+                .Select(se => se.ActualWorkingTime!.Value.TotalHours)
+                .ToList();
+
+            return actualTimes.Any() ? actualTimes.Sum() : null;
+        }
+
+        private decimal CalculateCompletionPercentage(Batch batch)
+        {
+            var allStages = batch.SubBatches.SelectMany(sb => sb.StageExecutions.Where(se => !se.IsSetup)).ToList();
+            if (!allStages.Any()) return 0;
+
+            var completedStages = allStages.Count(se => se.Status == StageExecutionStatus.Completed);
+            return Math.Round((decimal)completedStages / allStages.Count * 100, 1);
+        }
+
+        private BatchStageStatisticsDto CalculateStageStatistics(Batch batch)
+        {
+            var allStages = batch.SubBatches.SelectMany(sb => sb.StageExecutions).ToList();
+
+            return new BatchStageStatisticsDto
+            {
+                TotalStages = allStages.Count,
+                AwaitingStartStages = allStages.Count(s => s.Status == StageExecutionStatus.Pending),
+                InQueueStages = allStages.Count(s => s.Status == StageExecutionStatus.Waiting),
+                InProgressStages = allStages.Count(s => s.Status == StageExecutionStatus.InProgress),
+                PausedStages = allStages.Count(s => s.Status == StageExecutionStatus.Paused),
+                CompletedStages = allStages.Count(s => s.Status == StageExecutionStatus.Completed),
+                CancelledStages = allStages.Count(s => s.Status == StageExecutionStatus.Error),
+                SetupStages = allStages.Count(s => s.IsSetup),
+                OverdueStages = allStages.Count(s => s.IsOverdue)
+            };
+        }
+
+        private bool CanEditBatch(Batch batch)
+        {
+            return !batch.SubBatches.Any(sb =>
+                sb.StageExecutions.Any(se =>
+                    se.Status == StageExecutionStatus.InProgress ||
+                    se.Status == StageExecutionStatus.Completed));
+        }
+
+        private bool CanDeleteBatch(Batch batch)
+        {
+            return !batch.SubBatches.Any(sb =>
+                sb.StageExecutions.Any(se =>
+                    se.Status != StageExecutionStatus.Pending &&
+                    se.Status != StageExecutionStatus.Error));
+        }
+
+        private decimal CalculateSubBatchCompletion(SubBatch subBatch)
+        {
+            var stages = subBatch.StageExecutions.Where(se => !se.IsSetup).ToList();
+            if (!stages.Any()) return 0;
+
+            var completed = stages.Count(se => se.Status == StageExecutionStatus.Completed);
+            return Math.Round((decimal)completed / stages.Count * 100, 1);
+        }
+
+        private int? GetCurrentStageId(SubBatch subBatch)
+        {
+            return subBatch.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.InProgress)
+                .FirstOrDefault()?.Id;
+        }
+
+        private string? GetCurrentStageName(SubBatch subBatch)
+        {
+            var currentStage = subBatch.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.InProgress)
+                .FirstOrDefault();
+            return currentStage?.RouteStage?.Name;
+        }
+
+        private int? GetNextStageId(SubBatch subBatch)
+        {
+            return subBatch.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.Pending)
+                .OrderBy(se => se.RouteStage.Order)
+                .FirstOrDefault()?.Id;
+        }
+
+        private string? GetNextStageName(SubBatch subBatch)
+        {
+            var nextStage = subBatch.StageExecutions
+                .Where(se => se.Status == StageExecutionStatus.Pending)
+                .OrderBy(se => se.RouteStage.Order)
+                .FirstOrDefault();
+            return nextStage?.RouteStage?.Name;
+        }
+
+        private Project.Contracts.Enums.StageStatus MapStageExecutionStatus(StageExecutionStatus status)
+        {
+            return status switch
+            {
+                StageExecutionStatus.Pending => Project.Contracts.Enums.StageStatus.AwaitingStart,
+                StageExecutionStatus.Waiting => Project.Contracts.Enums.StageStatus.InQueue,
+                StageExecutionStatus.InProgress => Project.Contracts.Enums.StageStatus.InProgress,
+                StageExecutionStatus.Paused => Project.Contracts.Enums.StageStatus.Paused,
+                StageExecutionStatus.Completed => Project.Contracts.Enums.StageStatus.Completed,
+                StageExecutionStatus.Error => Project.Contracts.Enums.StageStatus.Cancelled,
+                _ => Project.Contracts.Enums.StageStatus.AwaitingStart
+            };
+        }
+
+        private Project.Contracts.Enums.Priority MapPriority(int priority)
+        {
+            return priority switch
+            {
+                <= 2 => Project.Contracts.Enums.Priority.Low,
+                <= 6 => Project.Contracts.Enums.Priority.Normal,
+                <= 9 => Project.Contracts.Enums.Priority.High,
+                _ => Project.Contracts.Enums.Priority.Critical
+            };
+        }
+
+        #endregion
     }
 
     /// <summary>
-    /// DTO для статистики партии
+    /// DTO для статистики партии согласно ТЗ
     /// </summary>
     public class BatchStatisticsDto
     {
         public int BatchId { get; set; }
-        public string DetailName { get; set; }
+        public string DetailName { get; set; } = string.Empty;
         public int TotalQuantity { get; set; }
         public int TotalStages { get; set; }
         public int MainStages { get; set; }

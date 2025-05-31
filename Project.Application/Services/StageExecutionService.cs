@@ -733,32 +733,46 @@ namespace Project.Application.Services
         /// </summary>
         private bool IsWorkingTime(DateTime dateTime)
         {
-            var timeOfDay = dateTime.TimeOfDay;
-            var dayOfWeek = dateTime.DayOfWeek;
-
-            // Не работаем в выходные (согласно ТЗ)
-            if (dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday)
-                return false;
-
-            // Обеденный перерыв 12:00-13:00 (согласно ТЗ)
-            if (timeOfDay >= _lunchStart && timeOfDay < _lunchEnd)
-                return false;
-
-            // Перерыв на ужин 21:00-21:30 (согласно ТЗ)
-            if (timeOfDay >= _dinnerStart && timeOfDay < _dinnerEnd)
-                return false;
-
-            // Рабочее время: 08:00-01:30 следующего дня (согласно ТЗ)
-            if (_workEnd < _workStart) // переход через полночь
+            try
             {
-                return timeOfDay >= _workStart || timeOfDay <= _workEnd;
+                var timeOfDay = dateTime.TimeOfDay;
+                var dayOfWeek = dateTime.DayOfWeek;
+
+                // Не работаем в выходные (согласно ТЗ: суббота, воскресенье)
+                if (dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday)
+                {
+                    return false;
+                }
+
+                // Обеденный перерыв 12:00-13:00 (согласно ТЗ)
+                if (timeOfDay >= _lunchStart && timeOfDay < _lunchEnd)
+                {
+                    return false;
+                }
+
+                // Перерыв на ужин 21:00-21:30 (согласно ТЗ)
+                if (timeOfDay >= _dinnerStart && timeOfDay < _dinnerEnd)
+                {
+                    return false;
+                }
+
+                // Рабочее время: 08:00-01:30 следующего дня (согласно ТЗ)
+                // Переход через полночь - ИСПРАВЛЕНА ЛОГИКА
+                if (timeOfDay >= _workStart || timeOfDay <= _workEnd)
+                {
+                    return true;
+                }
+
+                return false;
             }
-            else
+            catch (Exception ex)
             {
-                return timeOfDay >= _workStart && timeOfDay <= _workEnd;
+                _logger.LogError(ex, "Ошибка при проверке рабочего времени");
+                return true; // По умолчанию считаем рабочим временем
             }
         }
 
+        
         /// <summary>
         /// Проверка возможности работы вне рабочего времени согласно ТЗ
         /// </summary>
@@ -787,9 +801,9 @@ namespace Project.Application.Services
         #region Диаграмма Ганта
 
         /// <summary>
-        /// Получение данных для диаграммы Ганта
+        /// Получение всех этапов с расширенной информацией для диаграммы Ганта
         /// </summary>
-        public async Task<List<GanttStageDto>> GetAllStagesForGanttChart(DateTime? startDate = null, DateTime? endDate = null)
+        public async Task<List<GanttDto>> GetAllStagesForGanttChartAsync(DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
@@ -802,7 +816,7 @@ namespace Project.Application.Services
                 if (endDate.HasValue)
                     allStages = allStages.Where(s => !s.StartTimeUtc.HasValue || s.StartTimeUtc <= endDate).ToList();
 
-                var result = new List<GanttStageDto>();
+                var result = new List<GanttDto>();
 
                 foreach (var stage in allStages)
                 {
@@ -811,40 +825,48 @@ namespace Project.Application.Services
                     var detail = batch.Detail;
                     var routeStage = stage.RouteStage;
 
-                    var ganttStage = new GanttStageDto
+                    var ganttStage = new GanttDto
                     {
                         Id = stage.Id,
                         BatchId = batch.Id,
                         SubBatchId = subBatch.Id,
                         DetailName = detail.Name,
+                        DetailNumber = detail.Number,
                         StageName = stage.IsSetup ? $"Переналадка: {detail.Name}" : routeStage.Name,
                         MachineId = stage.MachineId,
                         MachineName = stage.Machine?.Name,
-                        StartTime = stage.StartTimeUtc,
-                        EndTime = stage.EndTimeUtc,
-                        Status = stage.Status.ToString(),
+                        MachineTypeName = stage.Machine?.MachineType?.Name,
+                        PlannedStartTime = stage.PlannedStartTimeUtc,
+                        PlannedEndTime = stage.PlannedStartTimeUtc?.Add(stage.PlannedDuration),
+                        ActualStartTime = stage.StartTimeUtc,
+                        ActualEndTime = stage.EndTimeUtc,
+                        Status = MapToStageStatus(stage.Status),
                         IsSetup = stage.IsSetup,
+                        Priority = MapToPriority(stage.Priority),
+                        IsCritical = stage.IsCritical,
                         PlannedDuration = stage.PlannedDuration,
-                        ScheduledStartTime = stage.ScheduledStartTimeUtc,
-                        ScheduledEndTime = stage.ScheduledStartTimeUtc?.Add(stage.PlannedDuration),
+                        ActualDuration = stage.ActualWorkingTime,
                         QueuePosition = stage.QueuePosition,
-                        Priority = stage.Priority,
+                        Quantity = subBatch.Quantity,
+                        CompletionPercentage = stage.CompletionPercentage,
                         OperatorId = stage.OperatorId,
-                        ReasonNote = stage.ReasonNote
+                        ReasonNote = stage.ReasonNote,
+                        IsOverdue = stage.IsOverdue
                     };
 
                     result.Add(ganttStage);
                 }
 
                 _logger.LogDebug("Получено {Count} этапов для диаграммы Ганта", result.Count);
-                return result;
+                return result.OrderBy(s => s.PlannedStartTime ?? s.ActualStartTime ?? DateTime.MaxValue).ToList();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка при получении данных для диаграммы Ганта");
-                return new List<GanttStageDto>();
+                return new List<GanttDto>();
             }
         }
+
 
         #endregion
 
@@ -906,8 +928,37 @@ namespace Project.Application.Services
             return Math.Min(100, (totalPlannedTime / totalActualTime) * 100);
         }
 
+
+        private Project.Contracts.Enums.StageStatus MapToStageStatus(StageExecutionStatus status)
+        {
+            return status switch
+            {
+                StageExecutionStatus.Pending => Project.Contracts.Enums.StageStatus.AwaitingStart,
+                StageExecutionStatus.Waiting => Project.Contracts.Enums.StageStatus.InQueue,
+                StageExecutionStatus.InProgress => Project.Contracts.Enums.StageStatus.InProgress,
+                StageExecutionStatus.Paused => Project.Contracts.Enums.StageStatus.Paused,
+                StageExecutionStatus.Completed => Project.Contracts.Enums.StageStatus.Completed,
+                StageExecutionStatus.Error => Project.Contracts.Enums.StageStatus.Cancelled,
+                _ => Project.Contracts.Enums.StageStatus.AwaitingStart
+            };
+        }
+
+        private Project.Contracts.Enums.Priority MapToPriority(int priority)
+        {
+            return priority switch
+            {
+                <= 2 => Project.Contracts.Enums.Priority.Low,
+                <= 6 => Project.Contracts.Enums.Priority.Normal,
+                <= 9 => Project.Contracts.Enums.Priority.High,
+                _ => Project.Contracts.Enums.Priority.Critical
+            };
+        }
+
         #endregion
     }
+
+
+
 
     /// <summary>
     /// DTO для статистики выполнения этапов
