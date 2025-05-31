@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Project.Application.Services;
 using Project.Contracts.Enums;
+using Project.Contracts.ModelDTO;
 using Project.Web.ViewModels;
 
 namespace Project.Web.Controllers
@@ -265,9 +266,18 @@ namespace Project.Web.Controllers
         {
             try
             {
-                // Получаем недавние события из истории
-                var recentHistory = await _historyService.GetStageExecutionHistoryAsync(
-                    DateTime.Today, DateTime.Now.AddDays(1));
+                // Создаем фильтр для получения недавних событий из истории
+                var historyFilter = new StageHistoryFilterDto
+                {
+                    StartDate = DateTime.Today,
+                    EndDate = DateTime.Now.AddDays(1),
+                    SortBy = "StatusChangedTime",
+                    SortDescending = true,
+                    Page = 1,
+                    PageSize = 10 // Ограничиваем количество для производительности
+                };
+
+                var recentHistory = await _historyService.GetStageExecutionHistoryAsync(historyFilter);
 
                 viewModel.RecentEvents = recentHistory
                     .OrderByDescending(h => h.StatusChangedTimeUtc)
@@ -288,6 +298,49 @@ namespace Project.Web.Controllers
                 viewModel.RecentEvents = new List<RecentEventViewModel>();
             }
         }
+
+        private string GetEventType(Project.Contracts.Enums.StageStatus status) => status switch
+        {
+            Project.Contracts.Enums.StageStatus.Completed => "completion",
+            Project.Contracts.Enums.StageStatus.InProgress => "start",
+            Project.Contracts.Enums.StageStatus.Paused => "pause",
+            Project.Contracts.Enums.StageStatus.Cancelled => "error",
+            _ => "status_change"
+        };
+
+        private string GetStatusDisplayName(Project.Contracts.Enums.StageStatus status) => status switch
+        {
+            Project.Contracts.Enums.StageStatus.Completed => "завершен",
+            Project.Contracts.Enums.StageStatus.InProgress => "запущен",
+            Project.Contracts.Enums.StageStatus.Paused => "приостановлен",
+            Project.Contracts.Enums.StageStatus.Cancelled => "отменен",
+            Project.Contracts.Enums.StageStatus.AwaitingStart => "ожидает запуска",
+            Project.Contracts.Enums.StageStatus.InQueue => "в очереди",
+            _ => "изменен"
+        };
+
+        private string GetEventIcon(Project.Contracts.Enums.StageStatus status) => status switch
+        {
+            Project.Contracts.Enums.StageStatus.Completed => "fas fa-check-circle",
+            Project.Contracts.Enums.StageStatus.InProgress => "fas fa-play-circle",
+            Project.Contracts.Enums.StageStatus.Paused => "fas fa-pause-circle",
+            Project.Contracts.Enums.StageStatus.Cancelled => "fas fa-times-circle",
+            Project.Contracts.Enums.StageStatus.AwaitingStart => "fas fa-clock",
+            Project.Contracts.Enums.StageStatus.InQueue => "fas fa-hourglass-half",
+            _ => "fas fa-info-circle"
+        };
+
+        private string GetEventCssClass(Project.Contracts.Enums.StageStatus status) => status switch
+        {
+            Project.Contracts.Enums.StageStatus.Completed => "text-success",
+            Project.Contracts.Enums.StageStatus.InProgress => "text-primary",
+            Project.Contracts.Enums.StageStatus.Paused => "text-warning",
+            Project.Contracts.Enums.StageStatus.Cancelled => "text-danger",
+            Project.Contracts.Enums.StageStatus.AwaitingStart => "text-secondary",
+            Project.Contracts.Enums.StageStatus.InQueue => "text-info",
+            _ => "text-info"
+        };
+
 
         private async Task LoadAlertsAsync(DashboardViewModel viewModel)
         {

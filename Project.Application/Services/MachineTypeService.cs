@@ -241,7 +241,16 @@ namespace Project.Application.Services
             {
                 // Получаем станки этого типа
                 var machines = await _machineRepo.GetMachinesByTypeAsync(machineType.Id);
-                var activeMachines = machines.Where(m => !await IsMachineBroken(m.Id)).ToList();
+
+                // Получаем информацию о работоспособности каждого станка асинхронно
+                var machineStatuses = new List<bool>();
+                foreach (var machine in machines)
+                {
+                    var isBroken = await IsMachineBroken(machine.Id);
+                    machineStatuses.Add(!isBroken);
+                }
+
+                var activeMachinesCount = machineStatuses.Count(isActive => isActive);
 
                 // Получаем операции, которые можно выполнять на станках данного типа
                 var supportedOperations = await GetSupportedOperationsAsync(machineType.Id);
@@ -253,8 +262,8 @@ namespace Project.Application.Services
                 {
                     Id = machineType.Id,
                     Name = machineType.Name,
-                    MachineCount = machines.Count,
-                    ActiveMachineCount = activeMachines.Count,
+                    MachineCount = machines.Count(),
+                    ActiveMachineCount = activeMachinesCount,
                     AveragePriority = machines.Any() ? (decimal)machines.Average(m => m.Priority) : 0,
                     SupportedOperations = supportedOperations,
                     UsageStatistics = usageStatistics,
@@ -270,11 +279,17 @@ namespace Project.Application.Services
                 {
                     Id = machineType.Id,
                     Name = machineType.Name,
+                    MachineCount = 0,
+                    ActiveMachineCount = 0,
+                    AveragePriority = 0,
+                    SupportedOperations = new List<string>(),
+                    UsageStatistics = new MachineTypeUsageStatisticsDto(),
                     CanDelete = false,
                     CreatedUtc = DateTime.UtcNow
                 };
             }
         }
+
 
         /// <summary>
         /// Проверка, сломан ли станок (упрощенная версия)
