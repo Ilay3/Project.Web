@@ -1,0 +1,241 @@
+﻿@model RouteFormViewModel
+@{
+    ViewData["Title"] = "Редактирование маршрута";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">Редактирование маршрута</h1>
+    <div>
+        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-primary">
+            <i class="bi bi-eye"></i> Просмотр
+        </a>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад
+        </a>
+    </div>
+</div>
+
+@if (!Model.CanEdit)
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i>
+        Маршрут нельзя редактировать - по нему выполняются производственные задания
+    </div>
+}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pencil"></i>
+                    Редактирование маршрута для @Model.DetailName
+                </h5>
+            </div>
+            <div class="card-body">
+                <form asp-action="Edit" method="post">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="Id" type="hidden">
+                    <input asp-for="DetailId" type="hidden">
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Деталь</label>
+                                <input class="form-control" value="@Model.DetailName" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Итого:</label>
+                                <div class="form-control-plaintext">
+                                    <strong>Время изготовления:</strong> <span id="totalNormTime">@Model.TotalNormTimeHours.ToString("F1")</span> ч<br>
+                                    <strong>Время переналадки:</strong> <span id="totalSetupTime">@Model.TotalSetupTimeHours.ToString("F1")</span> ч
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6>Этапы маршрута</h6>
+                            @if (Model.CanEdit)
+                            {
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addStage()">
+                                    <i class="bi bi-plus"></i> Добавить этап
+                                </button>
+                            }
+                        </div>
+
+                        <div id="stagesContainer">
+                            @for (int i = 0; i < Model.Stages.Count; i++)
+                            {
+                                <div class="stage-item border rounded p-3 mb-3">
+                                    <input type="hidden" name="Stages[@i].Id" value="@Model.Stages[i].Id">
+                                    <div class="row">
+                                        <div class="col-md-1">
+                                            <label class="form-label">№</label>
+                                            <input type="number" class="form-control" name="Stages[@i].Order" value="@Model.Stages[i].Order" min="1" required @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Название этапа *</label>
+                                            <input type="text" class="form-control" name="Stages[@i].Name" value="@Model.Stages[i].Name" required @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Тип станка *</label>
+                                            <select class="form-select" name="Stages[@i].MachineTypeId" required @(!Model.CanEdit ? "disabled" : "")>
+                                                <option value="">Выберите тип...</option>
+                                                @foreach (var type in Model.AvailableMachineTypes)
+                                                {
+                                                    <option value="@type.Id" selected="@(type.Id == Model.Stages[i].MachineTypeId)">@type.Name</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Время (ч) *</label>
+                                            <input type="number" class="form-control norm-time" name="Stages[@i].NormTime" value="@Model.Stages[i].NormTime" step="0.1" min="0.1" required onchange="updateTotals()" @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label">Переналадка (ч)</label>
+                                            <input type="number" class="form-control setup-time" name="Stages[@i].SetupTime" value="@Model.Stages[i].SetupTime" step="0.1" min="0" onchange="updateTotals()" @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        @if (Model.CanEdit)
+                                        {
+                                            <div class="col-md-1">
+                                                <label class="form-label">&nbsp;</label>
+                                                <button type="button" class="btn btn-outline-danger btn-sm d-block" onclick="removeStage(this)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Описание операции</label>
+                                            <input type="text" class="form-control" name="Stages[@i].Description" value="@Model.Stages[i].Description" @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Требуемая квалификация</label>
+                                            <input type="text" class="form-control" name="Stages[@i].RequiredSkills" value="@Model.Stages[i].RequiredSkills" @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Необходимые инструменты</label>
+                                            <input type="text" class="form-control" name="Stages[@i].RequiredTools" value="@Model.Stages[i].RequiredTools" @(!Model.CanEdit ? "readonly" : "")>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                            <i class="bi bi-x"></i> Отмена
+                        </a>
+                        @if (Model.CanEdit)
+                        {
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check"></i> Сохранить изменения
+                            </button>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+
+    @if (Model.CanEdit)
+    {
+        <script>
+            let stageCounter = @Model.Stages.Count;
+
+            function addStage() {
+                const container = document.getElementById('stagesContainer');
+                const stageHtml = `
+                    <div class="stage-item border rounded p-3 mb-3">
+                        <input type="hidden" name="Stages[${stageCounter}].Id" value="0">
+                        <div class="row">
+                            <div class="col-md-1">
+                                <label class="form-label">№</label>
+                                <input type="number" class="form-control" name="Stages[${stageCounter}].Order" value="${stageCounter + 1}" min="1" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Название этапа *</label>
+                                <input type="text" class="form-control" name="Stages[${stageCounter}].Name" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Тип станка *</label>
+                                <select class="form-select" name="Stages[${stageCounter}].MachineTypeId" required>
+                                    <option value="">Выберите тип...</option>
+            @foreach (var type in Model.AvailableMachineTypes)
+            {
+                                            <option value="@type.Id">@type.Name</option>
+            }
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Время (ч) *</label>
+                                <input type="number" class="form-control norm-time" name="Stages[${stageCounter}].NormTime" step="0.1" min="0.1" required onchange="updateTotals()">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Переналадка (ч)</label>
+                                <input type="number" class="form-control setup-time" name="Stages[${stageCounter}].SetupTime" step="0.1" min="0" value="0" onchange="updateTotals()">
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label">&nbsp;</label>
+                                <button type="button" class="btn btn-outline-danger btn-sm d-block" onclick="removeStage(this)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Описание операции</label>
+                                <input type="text" class="form-control" name="Stages[${stageCounter}].Description">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Требуемая квалификация</label>
+                                <input type="text" class="form-control" name="Stages[${stageCounter}].RequiredSkills">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Необходимые инструменты</label>
+                                <input type="text" class="form-control" name="Stages[${stageCounter}].RequiredTools">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', stageHtml);
+                stageCounter++;
+            }
+
+            function removeStage(button) {
+                if (document.querySelectorAll('.stage-item').length > 1) {
+                    button.closest('.stage-item').remove();
+                    updateTotals();
+                }
+            }
+
+            function updateTotals() {
+                let totalNorm = 0;
+                let totalSetup = 0;
+
+                document.querySelectorAll('.norm-time').forEach(input => {
+                    totalNorm += parseFloat(input.value) || 0;
+                });
+
+                document.querySelectorAll('.setup-time').forEach(input => {
+                    totalSetup += parseFloat(input.value) || 0;
+                });
+
+                document.getElementById('totalNormTime').textContent = totalNorm.toFixed(1);
+                document.getElementById('totalSetupTime').textContent = totalSetup.toFixed(1);
+            }
+        </script>
+    }
+}

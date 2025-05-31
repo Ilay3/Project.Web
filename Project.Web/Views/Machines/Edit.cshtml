@@ -1,0 +1,81 @@
+﻿@model MachineFormViewModel
+@{
+    ViewData["Title"] = "Редактирование станка";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">Редактирование станка</h1>
+    <div>
+        <a href="@Url.Action("Details", new { id = Model.Id })" class="btn btn-outline-primary">
+            <i class="bi bi-eye"></i> Просмотр
+        </a>
+        <a href="@Url.Action("Index")" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад
+        </a>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pencil"></i>
+                    Редактирование станка
+                </h5>
+            </div>
+            <div class="card-body">
+                <form asp-action="Edit" method="post">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="Id" type="hidden">
+
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label">Название станка *</label>
+                        <input asp-for="Name" class="form-control" required>
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="InventoryNumber" class="form-label">Инвентарный номер *</label>
+                        <input asp-for="InventoryNumber" class="form-control" required>
+                        <span asp-validation-for="InventoryNumber" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="MachineTypeId" class="form-label">Тип станка *</label>
+                        <select asp-for="MachineTypeId" class="form-select" required>
+                            <option value="">Выберите тип станка...</option>
+                            @foreach (var type in Model.AvailableMachineTypes)
+                            {
+                                <option value="@type.Id" selected="@(type.Id == Model.MachineTypeId)">@type.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="MachineTypeId" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Priority" class="form-label">Приоритет (0-10)</label>
+                        <input asp-for="Priority" class="form-control" type="number" min="0" max="10">
+                        <div class="form-text">Чем выше значение, тем выше приоритет использования станка</div>
+                        <span asp-validation-for="Priority" class="text-danger"></span>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary">
+                            <i class="bi bi-x"></i> Отмена
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Сохранить изменения
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}
